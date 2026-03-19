@@ -58,7 +58,7 @@
         "icons/512x512.png"
       ],
       "resources": [
-        "scripts/**"
+        "../scripts/**"
       ],
       "externalBin": [],
       "copyright": "",
