@@ -1,150 +1,269 @@
 name: Build & Release
 
-# Triggers:
-#   - Push a tag like "v1.0.0"  → builds + creates a GitHub Release with DMG/MSI attached
-#   - Manual trigger via GitHub UI → builds without publishing a release
+# ─────────────────────────────────────────────────────────────────────────────
+# Trigger options:
+#
+#   1. git tag v1.2.3 && git push origin v1.2.3
+#      → Builds ALL platforms and publishes a GitHub Release automatically
+#
+#   2. GitHub UI → Actions → Build & Release → Run workflow
+#      → Choose which platforms to build + whether to publish a release
+#
+#   3. GitHub CLI from any terminal (WSL / macOS / Windows):
+#      gh workflow run build.yml \
+#        --field platforms=all \
+#        --field version=1.2.3 \
+#        --field publish=true
+# ─────────────────────────────────────────────────────────────────────────────
 on:
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
   workflow_dispatch:
     inputs:
-      release:
-        description: "Create a GitHub Release?"
+      platforms:
+        description: "Which platforms to build"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - macos-only
+          - windows-only
+          - linux-only
+      version:
+        description: "Version string (e.g. 1.2.3) — used in release title"
+        required: false
+        default: "dev"
+      publish:
+        description: "Publish as a GitHub Release?"
         required: false
         default: "false"
         type: choice
         options:
-          - "true"
           - "false"
+          - "true"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Shared helpers
+# ─────────────────────────────────────────────────────────────────────────────
+env:
+  APP_DIR: dev-setup-app
 
 jobs:
-  # ────────────────────────────────────────────────────────────────────────────
-  # macOS — builds a universal .dmg (Intel + Apple Silicon)
-  # ────────────────────────────────────────────────────────────────────────────
+  # ───────────────────────────────────────────────────────────────────────────
+  # macOS — universal binary (Intel + Apple Silicon) → .dmg
+  # ───────────────────────────────────────────────────────────────────────────
   build-macos:
-    name: Build macOS (Universal)
+    name: 🍎 macOS (Universal DMG)
     runs-on: macos-latest
+    if: |
+      github.event_name == 'push' ||
+      inputs.platforms == 'all' ||
+      inputs.platforms == 'macos-only'
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node 20
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
-          cache-dependency-path: dev-setup-app/package-lock.json
+          cache: npm
+          cache-dependency-path: ${{ env.APP_DIR }}/package-lock.json
 
-      - name: Setup Rust (stable, universal targets)
+      - name: Setup Rust (stable + universal targets)
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: "aarch64-apple-darwin,x86_64-apple-darwin"
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
 
-      - name: Cache Rust build artifacts
+      - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: "dev-setup-app/src-tauri -> target"
+          workspaces: ${{ env.APP_DIR }}/src-tauri -> target
 
-      - name: Install frontend dependencies
-        working-directory: dev-setup-app
+      - name: Install frontend deps
+        working-directory: ${{ env.APP_DIR }}
         run: npm ci
 
-      - name: Build Tauri app (Universal macOS)
+      - name: Build (universal macOS)
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Code-signing (optional — set in repo secrets to sign the app)
-          # APPLE_CERTIFICATE:            ${{ secrets.APPLE_CERTIFICATE }}
-          # APPLE_CERTIFICATE_PASSWORD:   ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          # APPLE_SIGNING_IDENTITY:       ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          # APPLE_ID:                     ${{ secrets.APPLE_ID }}
-          # APPLE_PASSWORD:               ${{ secrets.APPLE_PASSWORD }}
-          # APPLE_TEAM_ID:                ${{ secrets.APPLE_TEAM_ID }}
+          # Uncomment + add secrets to enable code signing:
+          # APPLE_CERTIFICATE:          ${{ secrets.APPLE_CERTIFICATE }}
+          # APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          # APPLE_SIGNING_IDENTITY:     ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          # APPLE_ID:                   ${{ secrets.APPLE_ID }}
+          # APPLE_PASSWORD:             ${{ secrets.APPLE_PASSWORD }}
+          # APPLE_TEAM_ID:              ${{ secrets.APPLE_TEAM_ID }}
         with:
-          projectPath: dev-setup-app
+          projectPath: ${{ env.APP_DIR }}
           tagName: ${{ github.ref_name }}
-          releaseName: "Dev Setup ${{ github.ref_name }}"
+          releaseName: "Dev Setup v${{ inputs.version || github.ref_name }}"
           releaseBody: |
-            ## Dev Environment Setup ${{ github.ref_name }}
-
-            ### macOS
-            Download **Dev.Setup_${{ github.ref_name }}_universal.dmg**
-
-            ### Windows
-            Download **Dev.Setup_${{ github.ref_name }}_x64-setup.exe** or the `.msi` installer.
-
-            ---
-            See [README](https://github.com/${{ github.repository }}/blob/main/dev-setup-app/README.md) for installation instructions.
-          releaseDraft: false
+            ## Dev Environment Setup ${{ github.ref_name || inputs.version }}
+            ### Install
+            - **macOS**: Download the `.dmg` → open → drag to Applications
+            - **Windows**: Download the `-setup.exe` or `.msi`
+            See the [README](${{ github.server_url }}/${{ github.repository }}/blob/main/dev-setup-app/README.md) for full details.
+          releaseDraft: ${{ inputs.publish != 'true' && github.event_name != 'push' }}
           prerelease: false
-          args: "--target universal-apple-darwin"
+          args: --target universal-apple-darwin
 
-      - name: Upload DMG as workflow artifact (manual runs)
-        if: github.event_name == 'workflow_dispatch'
+      - name: Upload artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: macos-dmg
-          path: dev-setup-app/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          path: ${{ env.APP_DIR }}/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
           if-no-files-found: warn
+          retention-days: 14
 
-  # ────────────────────────────────────────────────────────────────────────────
-  # Windows — builds an NSIS (.exe) and MSI installer
-  # ────────────────────────────────────────────────────────────────────────────
+  # ───────────────────────────────────────────────────────────────────────────
+  # Windows — NSIS installer (.exe) + MSI
+  # ───────────────────────────────────────────────────────────────────────────
   build-windows:
-    name: Build Windows (x64)
+    name: 🪟 Windows (MSI + NSIS installer)
     runs-on: windows-latest
+    if: |
+      github.event_name == 'push' ||
+      inputs.platforms == 'all' ||
+      inputs.platforms == 'windows-only'
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node 20
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
-          cache-dependency-path: dev-setup-app/package-lock.json
+          cache: npm
+          cache-dependency-path: ${{ env.APP_DIR }}/package-lock.json
 
       - name: Setup Rust (stable)
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache Rust build artifacts
+      - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: "dev-setup-app/src-tauri -> target"
+          workspaces: ${{ env.APP_DIR }}/src-tauri -> target
 
-      - name: Install frontend dependencies
-        working-directory: dev-setup-app
+      - name: Install frontend deps
+        working-directory: ${{ env.APP_DIR }}
         run: npm ci
 
-      - name: Build Tauri app (Windows x64)
+      - name: Build (Windows x64)
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Code-signing (optional — set in repo secrets to sign the installer)
-          # TAURI_PRIVATE_KEY:   ${{ secrets.TAURI_PRIVATE_KEY }}
-          # TAURI_KEY_PASSWORD:  ${{ secrets.TAURI_KEY_PASSWORD }}
+          # Uncomment + add secrets to enable code signing:
+          # TAURI_PRIVATE_KEY:  ${{ secrets.TAURI_PRIVATE_KEY }}
+          # TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
-          projectPath: dev-setup-app
+          projectPath: ${{ env.APP_DIR }}
           tagName: ${{ github.ref_name }}
-          releaseName: "Dev Setup ${{ github.ref_name }}"
+          releaseName: "Dev Setup v${{ inputs.version || github.ref_name }}"
           releaseBody: |
-            ## Dev Environment Setup ${{ github.ref_name }}
-
-            ### Windows
-            Download **Dev.Setup_${{ github.ref_name }}_x64-setup.exe** or the `.msi` installer.
-
-            ### macOS
-            Download **Dev.Setup_${{ github.ref_name }}_universal.dmg**
-          releaseDraft: false
+            ## Dev Environment Setup ${{ github.ref_name || inputs.version }}
+            ### Install
+            - **Windows**: Download the `-setup.exe` or `.msi`
+            - **macOS**: Download the `.dmg`
+          releaseDraft: ${{ inputs.publish != 'true' && github.event_name != 'push' }}
           prerelease: false
 
-      - name: Upload installers as workflow artifact (manual runs)
-        if: github.event_name == 'workflow_dispatch'
+      - name: Upload artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: windows-installers
           path: |
-            dev-setup-app/src-tauri/target/release/bundle/msi/*.msi
-            dev-setup-app/src-tauri/target/release/bundle/nsis/*.exe
+            ${{ env.APP_DIR }}/src-tauri/target/release/bundle/msi/*.msi
+            ${{ env.APP_DIR }}/src-tauri/target/release/bundle/nsis/*.exe
           if-no-files-found: warn
+          retention-days: 14
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Linux — AppImage + .deb (useful for distribution)
+  # ───────────────────────────────────────────────────────────────────────────
+  build-linux:
+    name: 🐧 Linux (AppImage + deb)
+    runs-on: ubuntu-22.04
+    if: |
+      github.event_name == 'push' ||
+      inputs.platforms == 'all' ||
+      inputs.platforms == 'linux-only'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ${{ env.APP_DIR }}/package-lock.json
+
+      - name: Setup Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ env.APP_DIR }}/src-tauri -> target
+
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libwebkit2gtk-4.0-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev
+
+      - name: Install frontend deps
+        working-directory: ${{ env.APP_DIR }}
+        run: npm ci
+
+      - name: Build (Linux)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: ${{ env.APP_DIR }}
+          tagName: ${{ github.ref_name }}
+          releaseName: "Dev Setup v${{ inputs.version || github.ref_name }}"
+          releaseDraft: ${{ inputs.publish != 'true' && github.event_name != 'push' }}
+          prerelease: false
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-bundles
+          path: |
+            ${{ env.APP_DIR }}/src-tauri/target/release/bundle/appimage/*.AppImage
+            ${{ env.APP_DIR }}/src-tauri/target/release/bundle/deb/*.deb
+          if-no-files-found: warn
+          retention-days: 14
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Summary — prints download links after all builds finish
+  # ───────────────────────────────────────────────────────────────────────────
+  summary:
+    name: 📋 Build Summary
+    needs: [build-macos, build-windows, build-linux]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Print summary
+        run: |
+          echo "## Build Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Platform | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| 🍎 macOS  | ${{ needs.build-macos.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🪟 Windows| ${{ needs.build-windows.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🐧 Linux  | ${{ needs.build-linux.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Download artifacts from the **Actions → this run → Artifacts** section." >> $GITHUB_STEP_SUMMARY
+
