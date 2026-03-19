@@ -1,20 +1,5 @@
 name: Build & Release
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Trigger options:
-#
-#   1. git tag v1.2.3 && git push origin v1.2.3
-#      → Builds ALL platforms and publishes a GitHub Release automatically
-#
-#   2. GitHub UI → Actions → Build & Release → Run workflow
-#      → Choose which platforms to build + whether to publish a release
-#
-#   3. GitHub CLI from any terminal (WSL / macOS / Windows):
-#      gh workflow run build.yml \
-#        --field platforms=all \
-#        --field version=1.2.3 \
-#        --field publish=true
-# ─────────────────────────────────────────────────────────────────────────────
 on:
   push:
     branches:
@@ -28,34 +13,19 @@ on:
         required: true
         default: "all"
         type: choice
-        options:
-          - all
-          - macos-only
-          - windows-only
-          - linux-only
-      version:
-        description: "Version string (e.g. 1.2.3) — used in release title"
-        required: false
-        default: "dev"
+        options: [all, macos-only, windows-only, linux-only]
       publish:
         description: "Publish as a GitHub Release?"
         required: false
         default: "false"
         type: choice
-        options:
-          - "false"
-          - "true"
+        options: ["false", "true"]
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Shared helpers
-# ─────────────────────────────────────────────────────────────────────────────
 env:
   APP_DIR: dev-setup-app
 
 jobs:
-  # ───────────────────────────────────────────────────────────────────────────
-  # macOS — universal binary (Intel + Apple Silicon) → .dmg
-  # ───────────────────────────────────────────────────────────────────────────
+  # ── macOS ──────────────────────────────────────────────────────────────────
   build-macos:
     name: 🍎 macOS (Universal DMG)
     runs-on: macos-latest
@@ -66,66 +36,98 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node 20
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: npm
-          cache-dependency-path: ${{ env.APP_DIR }}/package-lock.json
 
-      - name: Setup Rust (stable + universal targets)
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
 
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ${{ env.APP_DIR }}/src-tauri -> target
 
+      - name: Generate icons (macOS)
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          pip3 install Pillow --quiet --break-system-packages 2>/dev/null || pip3 install Pillow --quiet
+          python3 - <<'PYEOF'
+          import os, struct, zlib
+          from PIL import Image, ImageDraw
+
+          os.makedirs("src-tauri/icons", exist_ok=True)
+
+          def make_icon(size):
+              img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+              draw = ImageDraw.Draw(img)
+              m = size // 8
+              draw.rounded_rectangle([m, m, size-m, size-m], radius=size//5, fill=(37,99,235))
+              r = size // 4
+              cx, cy = size//2, size//2
+              draw.ellipse([cx-r, cy-r, cx+r, cy+r], fill=(255,255,255))
+              return img
+
+          for sz in [32, 128, 256, 512]:
+              make_icon(sz).save(f"src-tauri/icons/{sz}x{sz}.png")
+          make_icon(256).save("src-tauri/icons/128x128@2x.png")
+
+          # .ico for Windows bundler
+          imgs = [make_icon(s) for s in [16,32,48,64,128,256]]
+          imgs[0].save("src-tauri/icons/icon.ico", format="ICO",
+                       sizes=[(s,s) for s in [16,32,48,64,128,256]],
+                       append_images=imgs[1:])
+          print("PNG + ICO icons generated")
+          PYEOF
+
+      - name: Create .icns (macOS native tool)
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          mkdir -p /tmp/AppIcon.iconset
+          for size in 16 32 64 128 256 512; do
+            python3 -c "
+          from PIL import Image, ImageDraw
+          size=$size
+          img = Image.new('RGBA',(size,size),(0,0,0,0))
+          d=ImageDraw.Draw(img)
+          m=size//8
+          d.rounded_rectangle([m,m,size-m,size-m],radius=size//5,fill=(37,99,235))
+          r=size//4; cx,cy=size//2,size//2
+          d.ellipse([cx-r,cy-r,cx+r,cy+r],fill=(255,255,255))
+          img.save('/tmp/AppIcon.iconset/icon_${size}x${size}.png')
+          img.save('/tmp/AppIcon.iconset/icon_${size}x${size}@2x.png')
+          "
+          done
+          iconutil -c icns /tmp/AppIcon.iconset -o src-tauri/icons/icon.icns
+          echo "✓ .icns created"
+
       - name: Install frontend deps
         working-directory: ${{ env.APP_DIR }}
-        run: npm ci
+        run: npm install
 
       - name: Build (universal macOS)
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Uncomment + add secrets to enable code signing:
-          # APPLE_CERTIFICATE:          ${{ secrets.APPLE_CERTIFICATE }}
-          # APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          # APPLE_SIGNING_IDENTITY:     ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          # APPLE_ID:                   ${{ secrets.APPLE_ID }}
-          # APPLE_PASSWORD:             ${{ secrets.APPLE_PASSWORD }}
-          # APPLE_TEAM_ID:              ${{ secrets.APPLE_TEAM_ID }}
         with:
           projectPath: ${{ env.APP_DIR }}
           tagName: ${{ github.ref_name }}
-          releaseName: "Dev Setup v${{ inputs.version || github.ref_name }}"
-          releaseBody: |
-            ## Dev Environment Setup ${{ github.ref_name || inputs.version }}
-            ### Install
-            - **macOS**: Download the `.dmg` → open → drag to Applications
-            - **Windows**: Download the `-setup.exe` or `.msi`
-            See the [README](${{ github.server_url }}/${{ github.repository }}/blob/main/dev-setup-app/README.md) for full details.
-          releaseDraft: ${{ inputs.publish != 'true' && github.event_name != 'push' }}
+          releaseName: "Dev Setup ${{ github.ref_name }}"
+          releaseDraft: ${{ github.event_name != 'push' || !startsWith(github.ref, 'refs/tags/') }}
           prerelease: false
           args: --target universal-apple-darwin
 
-      - name: Upload artifact
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
           name: macos-dmg
           path: ${{ env.APP_DIR }}/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
           if-no-files-found: warn
           retention-days: 14
 
-  # ───────────────────────────────────────────────────────────────────────────
-  # Windows — NSIS installer (.exe) + MSI
-  # ───────────────────────────────────────────────────────────────────────────
+  # ── Windows ────────────────────────────────────────────────────────────────
   build-windows:
-    name: 🪟 Windows (MSI + NSIS installer)
+    name: 🪟 Windows (MSI + NSIS)
     runs-on: windows-latest
     if: |
       github.event_name == 'push' ||
@@ -134,47 +136,62 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node 20
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: npm
-          cache-dependency-path: ${{ env.APP_DIR }}/package-lock.json
 
-      - name: Setup Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ${{ env.APP_DIR }}/src-tauri -> target
 
+      - name: Generate icons (Windows)
+        working-directory: ${{ env.APP_DIR }}
+        shell: python
+        run: |
+          import os
+          from PIL import Image, ImageDraw
+
+          os.makedirs("src-tauri/icons", exist_ok=True)
+
+          def make_icon(size):
+              img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+              draw = ImageDraw.Draw(img)
+              m = size // 8
+              draw.rounded_rectangle([m, m, size-m, size-m], radius=size//5, fill=(37,99,235))
+              r = size // 4; cx, cy = size//2, size//2
+              draw.ellipse([cx-r, cy-r, cx+r, cy+r], fill=(255,255,255))
+              return img
+
+          for sz in [32, 128, 256, 512]:
+              make_icon(sz).save(f"src-tauri/icons/{sz}x{sz}.png")
+          make_icon(256).save("src-tauri/icons/128x128@2x.png")
+          # Placeholder icns (not used on Windows but Tauri config lists it)
+          make_icon(512).save("src-tauri/icons/icon.icns")
+          imgs = [make_icon(s) for s in [16,32,48,64,128,256]]
+          imgs[0].save("src-tauri/icons/icon.ico", format="ICO",
+                       sizes=[(s,s) for s in [16,32,48,64,128,256]],
+                       append_images=imgs[1:])
+          print("Icons generated")
+
       - name: Install frontend deps
         working-directory: ${{ env.APP_DIR }}
-        run: npm ci
+        run: npm install
 
       - name: Build (Windows x64)
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Uncomment + add secrets to enable code signing:
-          # TAURI_PRIVATE_KEY:  ${{ secrets.TAURI_PRIVATE_KEY }}
-          # TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
           projectPath: ${{ env.APP_DIR }}
           tagName: ${{ github.ref_name }}
-          releaseName: "Dev Setup v${{ inputs.version || github.ref_name }}"
-          releaseBody: |
-            ## Dev Environment Setup ${{ github.ref_name || inputs.version }}
-            ### Install
-            - **Windows**: Download the `-setup.exe` or `.msi`
-            - **macOS**: Download the `.dmg`
-          releaseDraft: ${{ inputs.publish != 'true' && github.event_name != 'push' }}
+          releaseName: "Dev Setup ${{ github.ref_name }}"
+          releaseDraft: ${{ github.event_name != 'push' || !startsWith(github.ref, 'refs/tags/') }}
           prerelease: false
 
-      - name: Upload artifacts
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
           name: windows-installers
           path: |
@@ -183,9 +200,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-  # ───────────────────────────────────────────────────────────────────────────
-  # Linux — AppImage + .deb (useful for distribution)
-  # ───────────────────────────────────────────────────────────────────────────
+  # ── Linux ──────────────────────────────────────────────────────────────────
   build-linux:
     name: 🐧 Linux (AppImage + deb)
     runs-on: ubuntu-22.04
@@ -196,35 +211,56 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node 20
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: npm
-          cache-dependency-path: ${{ env.APP_DIR }}/package-lock.json
 
-      - name: Setup Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ${{ env.APP_DIR }}/src-tauri -> target
 
       - name: Install Linux system dependencies
         run: |
-          sudo apt-get update
+          sudo apt-get update -q
           sudo apt-get install -y \
-            libgtk-3-dev \
-            libwebkit2gtk-4.0-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            patchelf \
-            libssl-dev
+            libgtk-3-dev libwebkit2gtk-4.0-dev libayatana-appindicator3-dev \
+            librsvg2-dev patchelf libssl-dev python3-pip
+
+      - name: Generate icons (Linux)
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          pip3 install Pillow --quiet
+          python3 - <<'PYEOF'
+          import os
+          from PIL import Image, ImageDraw
+
+          os.makedirs("src-tauri/icons", exist_ok=True)
+
+          def make_icon(size):
+              img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+              draw = ImageDraw.Draw(img)
+              m = size // 8
+              draw.rounded_rectangle([m, m, size-m, size-m], radius=size//5, fill=(37,99,235))
+              r = size // 4; cx, cy = size//2, size//2
+              draw.ellipse([cx-r, cy-r, cx+r, cy+r], fill=(255,255,255))
+              return img
+
+          for sz in [32, 128, 256, 512]:
+              make_icon(sz).save(f"src-tauri/icons/{sz}x{sz}.png")
+          make_icon(256).save("src-tauri/icons/128x128@2x.png")
+          make_icon(512).save("src-tauri/icons/icon.icns")
+          imgs = [make_icon(s) for s in [16,32,48,64,128,256]]
+          imgs[0].save("src-tauri/icons/icon.ico", format="ICO",
+                       sizes=[(s,s) for s in [16,32,48,64,128,256]],
+                       append_images=imgs[1:])
+          print("Icons generated")
+          PYEOF
 
       - name: Install frontend deps
         working-directory: ${{ env.APP_DIR }}
-        run: npm ci
+        run: npm install
 
       - name: Build (Linux)
         uses: tauri-apps/tauri-action@v0
@@ -233,13 +269,12 @@ jobs:
         with:
           projectPath: ${{ env.APP_DIR }}
           tagName: ${{ github.ref_name }}
-          releaseName: "Dev Setup v${{ inputs.version || github.ref_name }}"
-          releaseDraft: ${{ inputs.publish != 'true' && github.event_name != 'push' }}
+          releaseName: "Dev Setup ${{ github.ref_name }}"
+          releaseDraft: ${{ github.event_name != 'push' || !startsWith(github.ref, 'refs/tags/') }}
           prerelease: false
 
-      - name: Upload artifacts
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
           name: linux-bundles
           path: |
@@ -248,24 +283,19 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-  # ───────────────────────────────────────────────────────────────────────────
-  # Summary — prints download links after all builds finish
-  # ───────────────────────────────────────────────────────────────────────────
+  # ── Summary ────────────────────────────────────────────────────────────────
   summary:
     name: 📋 Build Summary
     needs: [build-macos, build-windows, build-linux]
     runs-on: ubuntu-latest
     if: always()
     steps:
-      - name: Print summary
-        run: |
+      - run: |
           echo "## Build Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Platform | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|----------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| 🍎 macOS  | ${{ needs.build-macos.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🪟 Windows| ${{ needs.build-windows.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🐧 Linux  | ${{ needs.build-linux.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🍎 macOS   | ${{ needs.build-macos.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🪟 Windows | ${{ needs.build-windows.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🐧 Linux   | ${{ needs.build-linux.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Download artifacts from the **Actions → this run → Artifacts** section." >> $GITHUB_STEP_SUMMARY
-
+          echo "Download from **Actions → this run → Artifacts**" >> $GITHUB_STEP_SUMMARY

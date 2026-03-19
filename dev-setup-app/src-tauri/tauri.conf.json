@@ -27,7 +27,11 @@
         "readDir": true,
         "createDir": true,
         "exists": true,
-        "scope": ["$APPDATA/*", "$HOME/.dev-setup/*", "$RESOURCE/*"]
+        "scope": [
+          "$APPDATA/*",
+          "$HOME/.dev-setup/*",
+          "$RESOURCE/*"
+        ]
       },
       "path": {
         "all": true
@@ -53,10 +57,12 @@
         "icons/32x32.png",
         "icons/128x128.png",
         "icons/128x128@2x.png",
-        "icons/icon.icns",
-        "icons/icon.ico"
+        "icons/256x256.png",
+        "icons/512x512.png"
       ],
-      "resources": ["scripts/**"],
+      "resources": [
+        "scripts/**"
+      ],
       "externalBin": [],
       "copyright": "",
       "category": "DeveloperTool",
@@ -76,7 +82,11 @@
       },
       "linux": {
         "deb": {
-          "depends": ["libwebkit2gtk-4.0-dev | libwebkit2gtk-4.1-dev", "libgtk-3-0", "libayatana-appindicator3-1"]
+          "depends": [
+            "libwebkit2gtk-4.0-dev",
+            "libgtk-3-0",
+            "libayatana-appindicator3-1"
+          ]
         }
       }
     },
