@@ -1,0 +1,33 @@
+# Rust
+/target
+
+# Node
+node_modules
+dist
+dist-ssr
+
+# Tauri
+src-tauri/target
+src-tauri/WixTools
+
+# Env
+.env
+.env.local
+.env.production
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# IDE
+.vscode/settings.json
+.idea/
+*.iml
+
+# Build artifacts
+*.dmg
+*.msi
+*.deb
+*.AppImage

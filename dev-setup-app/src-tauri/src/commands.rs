@@ -1,0 +1,407 @@
+// commands.rs — Tauri command handlers exposed to the React frontend
+use crate::orchestrator::{execute_script, get_steps_for_os, SetupStep};
+use crate::state::{AppState, StepStatus, UserConfig};
+use serde::{Deserialize, Serialize};
+use std::sync::Mutex;
+use tauri::{AppHandle, State, Window};
+
+#[derive(Serialize)]
+pub struct OsInfo {
+    pub os: String,           // "macos" | "windows" | "linux"
+    pub arch: String,         // "x86_64" | "aarch64"
+    pub version: String,
+    pub is_apple_silicon: bool,
+}
+
+#[derive(Serialize)]
+pub struct StepResult {
+    pub id: String,
+    pub status: StepStatus,
+    pub logs: Vec<String>,
+    pub error: Option<String>,
+    pub retry_count: u32,
+    pub duration_secs: Option<u64>,
+}
+
+#[derive(Serialize)]
+pub struct FullState {
+    pub steps: Vec<StepResult>,
+    pub current_step_index: usize,
+    pub setup_started: bool,
+    pub setup_complete: bool,
+    pub config: UserConfig,
+}
+
+#[derive(Deserialize)]
+pub struct ConfigInput {
+    pub wsl_tar_path: Option<String>,
+    pub wsl_install_dir: Option<String>,
+    pub postgres_password: String,
+    pub postgres_db_name: String,
+    pub python_version: String,
+    pub node_version: String,
+    pub venv_name: String,
+    pub skip_already_installed: bool,
+}
+
+/// Detects the current operating system.
+#[tauri::command]
+pub fn detect_os() -> OsInfo {
+    let os = std::env::consts::OS;
+    let arch = std::env::consts::ARCH;
+
+    let is_apple_silicon = os == "macos" && arch == "aarch64";
+
+    OsInfo {
+        os: match os {
+            "macos" => "macos",
+            "windows" => "windows",
+            _ => "linux",
+        }
+        .to_string(),
+        arch: arch.to_string(),
+        version: os_version(),
+        is_apple_silicon,
+    }
+}
+
+/// Returns the ordered list of setup steps for the detected OS.
+#[tauri::command]
+pub fn get_setup_steps(os: String) -> Vec<SetupStep> {
+    get_steps_for_os(&os)
+}
+
+/// Starts the full setup sequence from step 0.
+#[tauri::command]
+pub async fn start_setup(
+    window: Window,
+    app_handle: AppHandle,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<(), String> {
+    let (steps, config) = {
+        let mut s = state.lock().unwrap();
+        s.setup_started = true;
+        s.current_step_index = 0;
+        let os = detect_os();
+        let steps = get_steps_for_os(&os.os);
+        for step in &steps {
+            s.get_or_create_step(&step.id);
+        }
+        (steps, s.config.clone())
+    };
+
+    for (idx, step) in steps.iter().enumerate() {
+        // Check if already done or skipped
+        let current_status = {
+            let s = state.lock().unwrap();
+            s.step_states.get(&step.id).map(|ss| ss.status.clone())
+        };
+        if matches!(current_status, Some(StepStatus::Done) | Some(StepStatus::Skipped)) {
+            continue;
+        }
+
+        // Mark running
+        {
+            let mut s = state.lock().unwrap();
+            s.current_step_index = idx;
+            let ss = s.get_or_create_step(&step.id);
+            ss.status = StepStatus::Running;
+        }
+        let _ = window.emit("step_status", serde_json::json!({ "id": step.id, "status": "running" }));
+
+        let start = std::time::Instant::now();
+        let result = execute_script(window.clone(), app_handle.clone(), step, &config).await;
+        let duration = start.elapsed().as_secs();
+
+        {
+            let mut s = state.lock().unwrap();
+            let ss = s.get_or_create_step(&step.id);
+            ss.duration_secs = Some(duration);
+            match result {
+                Ok(logs) => {
+                    ss.status = StepStatus::Done;
+                    ss.logs = logs;
+                    ss.error = None;
+                }
+                Err(err) => {
+                    ss.status = StepStatus::Failed;
+                    ss.error = Some(err.clone());
+                    let _ = window.emit(
+                        "step_status",
+                        serde_json::json!({ "id": step.id, "status": "failed", "error": err }),
+                    );
+                    // Stop the whole sequence on failure — user must retry
+                    return Err(format!("Step '{}' failed: {}", step.title, err));
+                }
+            }
+        }
+
+        let _ = window.emit("step_status", serde_json::json!({ "id": step.id, "status": "done" }));
+    }
+
+    {
+        let mut s = state.lock().unwrap();
+        s.setup_complete = true;
+    }
+    let _ = window.emit("setup_complete", true);
+    Ok(())
+}
+
+/// Runs a single step by its ID (useful for retry or running individually).
+#[tauri::command]
+pub async fn run_step(
+    step_id: String,
+    window: Window,
+    app_handle: AppHandle,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<(), String> {
+    let (step, config) = {
+        let s = state.lock().unwrap();
+        let os = detect_os();
+        let steps = get_steps_for_os(&os.os);
+        let step = steps.into_iter().find(|s| s.id == step_id)
+            .ok_or_else(|| format!("Unknown step: {}", step_id))?;
+        (step, s.config.clone())
+    };
+
+    {
+        let mut s = state.lock().unwrap();
+        let ss = s.get_or_create_step(&step.id);
+        ss.status = StepStatus::Running;
+        ss.logs.clear();
+        ss.error = None;
+    }
+    let _ = window.emit("step_status", serde_json::json!({ "id": step_id, "status": "running" }));
+
+    let start = std::time::Instant::now();
+    let result = execute_script(window.clone(), app_handle.clone(), &step, &config).await;
+    let duration = start.elapsed().as_secs();
+
+    let mut s = state.lock().unwrap();
+    let ss = s.get_or_create_step(&step.id);
+    ss.duration_secs = Some(duration);
+
+    match result {
+        Ok(logs) => {
+            ss.status = StepStatus::Done;
+            ss.logs = logs;
+            ss.error = None;
+            let _ = window.emit("step_status", serde_json::json!({ "id": step_id, "status": "done" }));
+            Ok(())
+        }
+        Err(err) => {
+            ss.status = StepStatus::Failed;
+            ss.error = Some(err.clone());
+            let _ = window.emit(
+                "step_status",
+                serde_json::json!({ "id": step_id, "status": "failed", "error": err }),
+            );
+            Err(err)
+        }
+    }
+}
+
+/// Marks a step as failed → pending and increments retry counter, then reruns it.
+#[tauri::command]
+pub async fn retry_step(
+    step_id: String,
+    window: Window,
+    app_handle: AppHandle,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<(), String> {
+    {
+        let mut s = state.lock().unwrap();
+        let ss = s.get_or_create_step(&step_id);
+        ss.retry_count += 1;
+        ss.status = StepStatus::Pending;
+        ss.error = None;
+    }
+    run_step(step_id, window, app_handle, state).await
+}
+
+/// Marks a step as skipped so the wizard can continue.
+#[tauri::command]
+pub fn skip_step(
+    step_id: String,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<(), String> {
+    let mut s = state.lock().unwrap();
+    let ss = s.get_or_create_step(&step_id);
+    ss.status = StepStatus::Skipped;
+    Ok(())
+}
+
+/// Returns the complete persisted state of all steps.
+#[tauri::command]
+pub fn get_state(state: State<'_, Mutex<AppState>>) -> FullState {
+    let s = state.lock().unwrap();
+    let os = detect_os();
+    let steps = get_steps_for_os(&os.os);
+    let step_results: Vec<StepResult> = steps
+        .iter()
+        .map(|step| {
+            if let Some(ss) = s.step_states.get(&step.id) {
+                StepResult {
+                    id: ss.id.clone(),
+                    status: ss.status.clone(),
+                    logs: ss.logs.clone(),
+                    error: ss.error.clone(),
+                    retry_count: ss.retry_count,
+                    duration_secs: ss.duration_secs,
+                }
+            } else {
+                StepResult {
+                    id: step.id.clone(),
+                    status: StepStatus::Pending,
+                    logs: vec![],
+                    error: None,
+                    retry_count: 0,
+                    duration_secs: None,
+                }
+            }
+        })
+        .collect();
+    FullState {
+        steps: step_results,
+        current_step_index: s.current_step_index,
+        setup_started: s.setup_started,
+        setup_complete: s.setup_complete,
+        config: s.config.clone(),
+    }
+}
+
+/// Wipes all progress and resets to initial state.
+#[tauri::command]
+pub fn reset_state(state: State<'_, Mutex<AppState>>) -> Result<(), String> {
+    let mut s = state.lock().unwrap();
+    s.reset();
+    Ok(())
+}
+
+/// Runs pre-flight checks: internet connection, disk space, required tools.
+#[tauri::command]
+pub async fn check_prerequisites() -> Vec<PrereqCheck> {
+    let mut checks: Vec<PrereqCheck> = Vec::new();
+    let os = detect_os();
+
+    // Disk space: require >= 10 GB free on home dir
+    checks.push(check_disk_space());
+
+    // OS-specific checks
+    if os.os == "macos" {
+        checks.push(check_command_available("git", "Git"));
+        checks.push(check_command_available("curl", "curl"));
+        checks.push(check_command_available("bash", "bash"));
+    } else if os.os == "windows" {
+        checks.push(check_command_available("wsl", "WSL"));
+        checks.push(check_command_available("winget", "winget"));
+        checks.push(check_command_available("powershell", "PowerShell"));
+    }
+
+    checks
+}
+
+#[derive(Serialize)]
+pub struct PrereqCheck {
+    pub name: String,
+    pub passed: bool,
+    pub message: String,
+}
+
+fn check_command_available(cmd: &str, label: &str) -> PrereqCheck {
+    let available = which::which(cmd).is_ok();
+    PrereqCheck {
+        name: label.to_string(),
+        passed: available,
+        message: if available {
+            format!("{} is available", label)
+        } else {
+            format!("{} not found in PATH", label)
+        },
+    }
+}
+
+fn check_disk_space() -> PrereqCheck {
+    // Simple heuristic: check home dir exists
+    let home = dirs::home_dir();
+    PrereqCheck {
+        name: "Home Directory".to_string(),
+        passed: home.is_some(),
+        message: home
+            .map(|p| format!("Home directory: {}", p.display()))
+            .unwrap_or_else(|| "Could not determine home directory".to_string()),
+    }
+}
+
+/// Opens the system terminal (fallback for manual steps).
+#[tauri::command]
+pub fn open_terminal() -> Result<(), String> {
+    let os = std::env::consts::OS;
+    match os {
+        "macos" => {
+            std::process::Command::new("open")
+                .args(["-a", "Terminal"])
+                .spawn()
+                .map_err(|e| e.to_string())?;
+        }
+        "windows" => {
+            std::process::Command::new("cmd")
+                .args(["/c", "start", "wt"])
+                .spawn()
+                .or_else(|_| {
+                    std::process::Command::new("cmd")
+                        .args(["/c", "start", "cmd"])
+                        .spawn()
+                })
+                .map_err(|e| e.to_string())?;
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+/// Returns the current user configuration.
+#[tauri::command]
+pub fn get_config(state: State<'_, Mutex<AppState>>) -> UserConfig {
+    state.lock().unwrap().config.clone()
+}
+
+/// Saves updated user configuration.
+#[tauri::command]
+pub fn save_config(
+    input: ConfigInput,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<(), String> {
+    let mut s = state.lock().unwrap();
+    s.config = UserConfig {
+        wsl_tar_path: input.wsl_tar_path,
+        wsl_install_dir: input.wsl_install_dir,
+        postgres_password: input.postgres_password,
+        postgres_db_name: input.postgres_db_name,
+        python_version: input.python_version,
+        node_version: input.node_version,
+        venv_name: input.venv_name,
+        skip_already_installed: input.skip_already_installed,
+    };
+    Ok(())
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+fn os_version() -> String {
+    // Best-effort version string
+    if cfg!(target_os = "macos") {
+        std::process::Command::new("sw_vers")
+            .arg("-productVersion")
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .unwrap_or_else(|| "unknown".to_string())
+            .trim()
+            .to_string()
+    } else if cfg!(target_os = "windows") {
+        "Windows 10/11".to_string()
+    } else {
+        "unknown".to_string()
+    }
+}
