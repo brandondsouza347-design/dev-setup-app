@@ -1,5 +1,7 @@
 # Dev Environment Setup App
 
+> **Repository:** https://github.com/brandon-dsouza_epicor/dev-setup-app
+
 A cross-platform developer environment installer built with **Tauri** (Rust + React). Automates the complete setup of a macOS or Windows development environment with a guided wizard UI, live log streaming, and error-recovery tooling.
 
 ---
@@ -103,6 +105,13 @@ All steps done → 'setup_complete' event → Complete screen
 ---
 
 ## Getting Started
+
+### 0. Clone the repository
+
+```bash
+git clone https://github.com/brandon-dsouza_epicor/dev-setup-app.git
+cd dev-setup-app/dev-setup-app
+```
 
 ### 1. Install dependencies
 
