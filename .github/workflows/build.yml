@@ -267,6 +267,30 @@ jobs:
         working-directory: ${{ env.APP_DIR }}
         run: npm install
 
+      - name: Patch wry for webkit2gtk 0.18.2 compatibility
+        working-directory: ${{ env.APP_DIR }}/src-tauri
+        run: |
+          # Fetch crates so the registry cache is populated
+          cargo fetch
+          # wry 0.24.11 calls SettingsExt methods without importing the trait.
+          # webkit2gtk 0.18.2 (required by tauri 1.6) no longer auto-imports it.
+          # Fix: prepend `use webkit2gtk::prelude::*;` to wry's webkitgtk mod.rs
+          WRY_MOD=$(find "$HOME/.cargo/registry/src" -path "*/wry-*/src/webview/webkitgtk/mod.rs" 2>/dev/null | head -1)
+          if [ -n "$WRY_MOD" ]; then
+            echo "Patching: $WRY_MOD"
+            python3 -c "
+path = '$WRY_MOD'
+content = open(path).read()
+if 'webkit2gtk::prelude' not in content:
+    open(path, 'w').write('use webkit2gtk::prelude::*;\n' + content)
+    print('Patch applied successfully')
+else:
+    print('Already patched, skipping')
+"
+          else
+            echo "WARNING: wry webkitgtk/mod.rs not found in cargo registry"
+          fi
+
       - name: Build (Linux)
         uses: tauri-apps/tauri-action@v0
         env:
