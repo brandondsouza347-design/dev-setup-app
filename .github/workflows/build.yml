@@ -113,7 +113,7 @@ jobs:
           projectPath: ${{ env.APP_DIR }}
           tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
           releaseName: ${{ startsWith(github.ref, 'refs/tags/') && format('Dev Setup {0}', github.ref_name) || '' }}
-          releaseDraft: ${{ !startsWith(github.ref, 'refs/tags/') }}
+          releaseDraft: ${{ startsWith(github.ref, 'refs/tags/') == false }}
           prerelease: false
           includeUpdaterJson: false
           args: --target universal-apple-darwin
@@ -191,7 +191,7 @@ jobs:
           projectPath: ${{ env.APP_DIR }}
           tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
           releaseName: ${{ startsWith(github.ref, 'refs/tags/') && format('Dev Setup {0}', github.ref_name) || '' }}
-          releaseDraft: ${{ !startsWith(github.ref, 'refs/tags/') }}
+          releaseDraft: ${{ startsWith(github.ref, 'refs/tags/') == false }}
           prerelease: false
           includeUpdaterJson: false
 
@@ -272,17 +272,17 @@ jobs:
         run: |
           cargo fetch
           WRY_MOD=$(find "$HOME/.cargo/registry/src" -path "*/wry-*/src/webview/webkitgtk/mod.rs" 2>/dev/null | head -1)
-          if [ -n "$WRY_MOD" ]; then
-            echo "Patching: $WRY_MOD"
-            if ! grep -q "webkit2gtk::prelude" "$WRY_MOD"; then
-              { echo "use webkit2gtk::prelude::*;"; cat "$WRY_MOD"; } > /tmp/wry_mod_patched.rs
-              cp /tmp/wry_mod_patched.rs "$WRY_MOD"
-              echo "Patch applied successfully"
-            else
-              echo "Already patched, skipping"
-            fi
+          if [ -z "$WRY_MOD" ]; then
+            echo "ERROR: wry webkitgtk/mod.rs not found in cargo registry after fetch"
+            exit 1
+          fi
+          echo "Found wry source: $WRY_MOD"
+          if grep -q "webkit2gtk::prelude" "$WRY_MOD"; then
+            echo "Already patched, skipping"
           else
-            echo "WARNING: wry webkitgtk/mod.rs not found in cargo registry"
+            chmod u+w "$WRY_MOD"
+            sed -i '1s/^/use webkit2gtk::prelude::*;\n/' "$WRY_MOD"
+            grep -m1 "webkit2gtk" "$WRY_MOD" && echo "Patch applied successfully"
           fi
 
       - name: Build (Linux)
@@ -293,7 +293,7 @@ jobs:
           projectPath: ${{ env.APP_DIR }}
           tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
           releaseName: ${{ startsWith(github.ref, 'refs/tags/') && format('Dev Setup {0}', github.ref_name) || '' }}
-          releaseDraft: ${{ !startsWith(github.ref, 'refs/tags/') }}
+          releaseDraft: ${{ startsWith(github.ref, 'refs/tags/') == false }}
           prerelease: false
           includeUpdaterJson: false
 
