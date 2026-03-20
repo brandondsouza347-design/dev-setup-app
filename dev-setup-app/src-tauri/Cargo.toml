@@ -20,6 +20,11 @@ tokio = { version = "1", features = ["full"] }
 which = "6"
 dirs = "5"
 
+# Pin webkit2gtk to 0.18.0 on Linux — wry 0.24.11 is incompatible with 0.18.2
+# (0.18.2 changed SettingsExt trait visibility, breaking wry's implicit usage)
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = { version = "=0.18.0", features = ["v2_28"] }
+
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
