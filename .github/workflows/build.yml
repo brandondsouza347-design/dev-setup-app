@@ -13,7 +13,7 @@ on:
         required: true
         default: "all"
         type: choice
-        options: [all, macos-only, windows-only, linux-only]
+        options: [all, macos-only, windows-only]
       publish:
         description: "Publish as a GitHub Release?"
         required: false
@@ -205,112 +205,10 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-  # ── Linux ──────────────────────────────────────────────────────────────────
-  build-linux:
-    name: 🐧 Linux (AppImage + deb)
-    runs-on: ubuntu-22.04
-    if: |
-      github.event_name == 'push' ||
-      inputs.platforms == 'all' ||
-      inputs.platforms == 'linux-only'
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: ${{ env.APP_DIR }}/src-tauri -> target
-
-      - name: Install Linux system dependencies
-        run: |
-          sudo apt-get update -q
-          sudo apt-get install -y \
-            libgtk-3-dev libwebkit2gtk-4.0-dev libayatana-appindicator3-dev \
-            librsvg2-dev patchelf libssl-dev python3-pip
-
-      - name: Generate icons (Linux)
-        working-directory: ${{ env.APP_DIR }}
-        run: |
-          pip3 install Pillow --quiet
-          python3 - <<'PYEOF'
-          import os
-          from PIL import Image, ImageDraw
-
-          os.makedirs("src-tauri/icons", exist_ok=True)
-
-          def make_icon(size):
-              img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-              draw = ImageDraw.Draw(img)
-              m = size // 8
-              draw.rounded_rectangle([m, m, size-m, size-m], radius=size//5, fill=(37,99,235))
-              r = size // 4; cx, cy = size//2, size//2
-              draw.ellipse([cx-r, cy-r, cx+r, cy+r], fill=(255,255,255))
-              return img
-
-          for sz in [32, 128, 256, 512]:
-              make_icon(sz).save(f"src-tauri/icons/{sz}x{sz}.png")
-          make_icon(256).save("src-tauri/icons/128x128@2x.png")
-          make_icon(512).save("src-tauri/icons/icon.icns")
-          imgs = [make_icon(s) for s in [16,32,48,64,128,256]]
-          imgs[0].save("src-tauri/icons/icon.ico", format="ICO",
-                       sizes=[(s,s) for s in [16,32,48,64,128,256]],
-                       append_images=imgs[1:])
-          print("Icons generated")
-          PYEOF
-
-      - name: Install frontend deps
-        working-directory: ${{ env.APP_DIR }}
-        run: npm install
-
-      - name: Patch wry for webkit2gtk 0.18.2 compatibility
-        working-directory: ${{ env.APP_DIR }}/src-tauri
-        run: |
-          cargo fetch
-          WRY_MOD=$(find "$HOME/.cargo/registry/src" -path "*/wry-*/src/webview/webkitgtk/mod.rs" 2>/dev/null | head -1)
-          if [ -z "$WRY_MOD" ]; then
-            echo "ERROR: wry webkitgtk/mod.rs not found in cargo registry after fetch"
-            exit 1
-          fi
-          echo "Found wry source: $WRY_MOD"
-          if grep -q "webkit2gtk::prelude" "$WRY_MOD"; then
-            echo "Already patched, skipping"
-          else
-            chmod u+w "$WRY_MOD"
-            sed -i '1s/^/use webkit2gtk::prelude::*;\n/' "$WRY_MOD"
-            grep -m1 "webkit2gtk" "$WRY_MOD" && echo "Patch applied successfully"
-          fi
-
-      - name: Build (Linux)
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          projectPath: ${{ env.APP_DIR }}
-          tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
-          releaseName: ${{ startsWith(github.ref, 'refs/tags/') && format('Dev Setup {0}', github.ref_name) || '' }}
-          releaseDraft: ${{ startsWith(github.ref, 'refs/tags/') == false }}
-          prerelease: false
-          includeUpdaterJson: false
-
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: linux-bundles
-          path: |
-            ${{ env.APP_DIR }}/src-tauri/target/release/bundle/appimage/*.AppImage
-            ${{ env.APP_DIR }}/src-tauri/target/release/bundle/deb/*.deb
-          if-no-files-found: warn
-          retention-days: 14
-
   # ── Summary ────────────────────────────────────────────────────────────────
   summary:
     name: 📋 Build Summary
-    needs: [build-macos, build-windows, build-linux]
+    needs: [build-macos, build-windows]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -320,6 +218,5 @@ jobs:
           echo "|----------|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| 🍎 macOS   | ${{ needs.build-macos.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| 🪟 Windows | ${{ needs.build-windows.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🐧 Linux   | ${{ needs.build-linux.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Download from **Actions → this run → Artifacts**" >> $GITHUB_STEP_SUMMARY
