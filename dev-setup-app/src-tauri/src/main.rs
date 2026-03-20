@@ -27,7 +27,7 @@ fn main() {
             commands::save_config,
         ])
         .setup(|app| {
-            let window = app.get_window("main").unwrap();
+            let _window = app.get_window("main").unwrap();
             // Enable devtools in debug builds
             #[cfg(debug_assertions)]
             window.open_devtools();
