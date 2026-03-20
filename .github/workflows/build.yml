@@ -270,23 +270,17 @@ jobs:
       - name: Patch wry for webkit2gtk 0.18.2 compatibility
         working-directory: ${{ env.APP_DIR }}/src-tauri
         run: |
-          # Fetch crates so the registry cache is populated
           cargo fetch
-          # wry 0.24.11 calls SettingsExt methods without importing the trait.
-          # webkit2gtk 0.18.2 (required by tauri 1.6) no longer auto-imports it.
-          # Fix: prepend `use webkit2gtk::prelude::*;` to wry's webkitgtk mod.rs
           WRY_MOD=$(find "$HOME/.cargo/registry/src" -path "*/wry-*/src/webview/webkitgtk/mod.rs" 2>/dev/null | head -1)
           if [ -n "$WRY_MOD" ]; then
             echo "Patching: $WRY_MOD"
-            python3 -c "
-path = '$WRY_MOD'
-content = open(path).read()
-if 'webkit2gtk::prelude' not in content:
-    open(path, 'w').write('use webkit2gtk::prelude::*;\n' + content)
-    print('Patch applied successfully')
-else:
-    print('Already patched, skipping')
-"
+            if ! grep -q "webkit2gtk::prelude" "$WRY_MOD"; then
+              { echo "use webkit2gtk::prelude::*;"; cat "$WRY_MOD"; } > /tmp/wry_mod_patched.rs
+              cp /tmp/wry_mod_patched.rs "$WRY_MOD"
+              echo "Patch applied successfully"
+            else
+              echo "Already patched, skipping"
+            fi
           else
             echo "WARNING: wry webkitgtk/mod.rs not found in cargo registry"
           fi
