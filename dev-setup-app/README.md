@@ -1,8 +1,38 @@
 # Dev Environment Setup App
 
-> **Repository:** https://github.com/brandon-dsouza_epicor/dev-setup-app
+> See the [repository root README](../README.md) for full documentation, build instructions, and CI/CD details.
 
-A cross-platform developer environment installer built with **Tauri** (Rust + React). Automates the complete setup of a macOS or Windows development environment with a guided wizard UI, live log streaming, and error-recovery tooling.
+A cross-platform developer environment installer built with **Tauri v2** (Rust + React).
+
+## Quick Start
+
+### Windows
+```powershell
+# One-time setup (run as Administrator):
+.\scripts\build\install-build-deps-windows.ps1
+
+# Build:
+.\scripts\build\build-windows.ps1
+```
+
+### macOS
+```bash
+./scripts/build/install-build-deps-mac.sh
+./scripts/build/build-mac.sh
+```
+
+### Dev mode
+```bash
+npm install
+cargo tauri dev
+```
+
+## Output
+| Platform | File |
+|----------|------|
+| Windows MSI | `src-tauri/target/release/bundle/msi/*.msi` |
+| Windows EXE | `src-tauri/target/release/bundle/nsis/*-setup.exe` |
+| macOS DMG | `src-tauri/target/release/bundle/dmg/*.dmg` |
 
 ---
 
