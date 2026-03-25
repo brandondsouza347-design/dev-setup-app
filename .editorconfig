@@ -1,0 +1,12 @@
+root = true
+
+[*]
+end_of_line = lf
+charset = utf-8
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+# PowerShell requires UTF-8 with BOM for Windows PowerShell 5.x compatibility
+[*.ps1]
+charset = utf-8-bom
+end_of_line = crlf

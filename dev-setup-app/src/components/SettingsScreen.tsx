@@ -1,7 +1,7 @@
 // components/SettingsScreen.tsx — Configure installation parameters
 import React, { useState } from 'react';
 import { Save, ChevronLeft, ChevronRight, FolderOpen } from 'lucide-react';
-import { open as openDialog } from '@tauri-apps/api/dialog';
+import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import type { UserConfig, WizardPage, OsInfo } from '../types';
 
 interface Props {

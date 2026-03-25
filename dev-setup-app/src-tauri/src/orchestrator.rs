@@ -3,7 +3,7 @@ use crate::state::UserConfig;
 use serde::{Deserialize, Serialize};
 use std::process::Stdio;
 use std::time::Instant;
-use tauri::Window;
+use tauri::{Emitter, WebviewWindow};
 use tokio::sync::mpsc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -186,16 +186,17 @@ fn all_steps() -> Vec<SetupStep> {
 
 /// Resolves the path to a bundled script relative to the app resources directory.
 fn script_path(app_handle: &tauri::AppHandle, script_name: &str) -> Result<std::path::PathBuf, String> {
+    use tauri::Manager;
     let resource_dir = app_handle
-        .path_resolver()
+        .path()
         .resource_dir()
-        .ok_or("Could not determine resource directory")?;
+        .map_err(|e| e.to_string())?;
     Ok(resource_dir.join("scripts").join(script_name))
 }
 
 /// Execute a shell script and stream output line-by-line to the frontend via events.
 pub async fn execute_script(
-    window: Window,
+    window: WebviewWindow,
     app_handle: tauri::AppHandle,
     step: &SetupStep,
     config: &UserConfig,
@@ -328,7 +329,7 @@ fn build_env(config: &UserConfig) -> Vec<(String, String)> {
     env
 }
 
-fn emit_log(window: &Window, step_id: &str, line: &str, level: LogLevel) {
+fn emit_log(window: &WebviewWindow, step_id: &str, line: &str, level: LogLevel) {
     let _ = window.emit(
         "step_log",
         LogEvent {

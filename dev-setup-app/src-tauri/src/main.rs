@@ -7,10 +7,14 @@ mod state;
 
 use state::AppState;
 use std::sync::Mutex;
-use tauri::Manager;
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_os::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(Mutex::new(AppState::default()))
         .invoke_handler(tauri::generate_handler![
             commands::detect_os,
@@ -26,11 +30,13 @@ fn main() {
             commands::get_config,
             commands::save_config,
         ])
-        .setup(|app| {
-            let _window = app.get_window("main").unwrap();
-            // Enable devtools in debug builds
+        .setup(|_app| {
             #[cfg(debug_assertions)]
-            window.open_devtools();
+            {
+                use tauri::Manager;
+                let window = _app.get_webview_window("main").unwrap();
+                window.open_devtools();
+            }
             Ok(())
         })
         .run(tauri::generate_context!())

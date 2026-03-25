@@ -3,7 +3,7 @@ use crate::orchestrator::{execute_script, get_steps_for_os, SetupStep};
 use crate::state::{AppState, StepStatus, UserConfig};
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
-use tauri::{AppHandle, State, Window};
+use tauri::{AppHandle, Emitter, State, WebviewWindow};
 
 #[derive(Serialize)]
 pub struct OsInfo {
@@ -74,7 +74,7 @@ pub fn get_setup_steps(os: String) -> Vec<SetupStep> {
 /// Starts the full setup sequence from step 0.
 #[tauri::command]
 pub async fn start_setup(
-    window: Window,
+    window: WebviewWindow,
     app_handle: AppHandle,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<(), String> {
@@ -151,7 +151,7 @@ pub async fn start_setup(
 #[tauri::command]
 pub async fn run_step(
     step_id: String,
-    window: Window,
+    window: WebviewWindow,
     app_handle: AppHandle,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<(), String> {
@@ -205,7 +205,7 @@ pub async fn run_step(
 #[tauri::command]
 pub async fn retry_step(
     step_id: String,
-    window: Window,
+    window: WebviewWindow,
     app_handle: AppHandle,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<(), String> {

@@ -1,6 +1,6 @@
 // hooks/useSetup.ts — Central state hook wiring Tauri commands to React state
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import type {
   OsInfo,

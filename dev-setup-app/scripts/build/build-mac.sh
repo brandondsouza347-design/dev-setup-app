@@ -39,6 +39,8 @@ check_cmd npm    || PREREQ_OK=false
 if ! command -v cargo-tauri &>/dev/null && ! cargo tauri --version &>/dev/null 2>&1; then
     echo "  ✗ Tauri CLI not found"
     PREREQ_OK=false
+else
+    echo "  ✓ Tauri CLI — $(cargo tauri --version 2>&1 | head -1)"
 fi
 
 if [ "$PREREQ_OK" = "false" ]; then
@@ -83,11 +85,20 @@ echo "    This takes 5-15 minutes on first build (Rust compilation)"
 echo ""
 
 if [ "$BUILD_TARGET" = "universal" ]; then
-    cargo tauri build --target universal-apple-darwin
+cargo tauri build --target universal-apple-darwin
+if [ $? -ne 0 ]; then
+    echo ""
+    echo "══════════════════════════════════════════════════"
+    echo "  ❌ Build failed! See errors above."
+    echo "══════════════════════════════════════════════════"
+    exit 1
+fi
 elif [ "$BUILD_TARGET" = "aarch64" ]; then
     cargo tauri build --target aarch64-apple-darwin
+    if [ $? -ne 0 ]; then echo "  ❌ Build failed!"; exit 1; fi
 else
     cargo tauri build --target x86_64-apple-darwin
+    if [ $? -ne 0 ]; then echo "  ❌ Build failed!"; exit 1; fi
 fi
 
 # ── 5. Find and report output ────────────────────────────────────────────────
