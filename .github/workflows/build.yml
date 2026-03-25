@@ -118,11 +118,15 @@ jobs:
           includeUpdaterJson: false
           args: --target universal-apple-darwin
 
+      - name: List macOS bundle output
+        if: always()
+        run: find ${{ env.APP_DIR }}/src-tauri/target -name "*.dmg" -o -name "*.app" 2>/dev/null | head -20 || echo "No bundles found"
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: macos-dmg
-          path: ${{ env.APP_DIR }}/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          path: ${{ env.APP_DIR }}/src-tauri/target/**/bundle/dmg/*.dmg
           if-no-files-found: warn
           retention-days: 14
 
