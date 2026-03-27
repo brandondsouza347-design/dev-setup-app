@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   CheckCircle2, XCircle, Loader2, SkipForward, RotateCcw,
-  ChevronDown, ChevronRight, Terminal, Clock
+  ChevronDown, ChevronRight, Terminal, Clock, ScrollText
 } from 'lucide-react';
 import type { SetupStep, StepResult, LogEntry, WizardPage } from '../types';
 import { StepBadge } from './StepBadge';
@@ -37,7 +37,9 @@ export const ProgressDashboard: React.FC<Props> = ({
 }) => {
   const [expandedStep, setExpandedStep] = useState<string | null>(null);
   const [retrying, setRetrying] = useState<string | null>(null);
+  const [logsOpen, setLogsOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const logsEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-expand the currently running step
   useEffect(() => {
@@ -46,10 +48,24 @@ export const ProgressDashboard: React.FC<Props> = ({
     }
   }, [currentStepIndex, steps]);
 
-  // Auto-scroll log to bottom
+  // Auto-scroll step log to bottom
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [logs]);
+
+  // Auto-scroll aggregated log panel to bottom when open
+  useEffect(() => {
+    if (logsOpen) {
+      logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [logs, logsOpen]);
+
+  // Flatten + sort all log entries across all steps by timestamp
+  const allLogs: (InternalLogEntry & { stepTitle: string })[] = steps
+    .flatMap((step) =>
+      (logs[step.id] ?? []).map((entry) => ({ ...entry, stepTitle: step.title }))
+    )
+    .sort((a, b) => (a.ts ?? 0) - (b.ts ?? 0));
 
   const handleRetry = async (id: string) => {
     setRetrying(id);
@@ -214,6 +230,41 @@ export const ProgressDashboard: React.FC<Props> = ({
         })}
       </div>
 
+      {/* Aggregated Live Logs panel */}
+      <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+        {/* Panel header / toggle */}
+        <button
+          className="w-full flex items-center justify-between px-6 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors select-none"
+          onClick={() => setLogsOpen((o) => !o)}
+        >
+          <span className="flex items-center gap-2">
+            <ScrollText className="w-4 h-4 text-gray-400" />
+            Live Logs
+            {allLogs.length > 0 && (
+              <span className="px-1.5 py-0.5 text-xs rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
+                {allLogs.length}
+              </span>
+            )}
+          </span>
+          {logsOpen
+            ? <ChevronDown className="w-4 h-4 text-gray-400" />
+            : <ChevronRight className="w-4 h-4 text-gray-400" />}
+        </button>
+
+        {logsOpen && (
+          <div className="border-t border-gray-100 dark:border-gray-700 bg-gray-950 max-h-56 overflow-y-auto font-mono text-xs px-4 py-3 space-y-0.5">
+            {allLogs.length === 0 ? (
+              <p className="text-gray-500 italic">No log output yet.</p>
+            ) : (
+              allLogs.map((entry, i) => (
+                <AggregatedLogLine key={i} entry={entry} />
+              ))
+            )}
+            <div ref={logsEndRef} />
+          </div>
+        )}
+      </div>
+
       {/* Footer action bar */}
       <div className="px-6 py-3 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center justify-between">
         <button
@@ -249,6 +300,18 @@ const LogLine: React.FC<{ entry: InternalLogEntry }> = ({ entry }) => {
   const colorClass = LOG_COLORS[entry.level] ?? 'text-gray-300';
   return (
     <div className={`leading-5 whitespace-pre-wrap break-all ${colorClass}`}>
+      {entry.line}
+    </div>
+  );
+};
+
+const AggregatedLogLine: React.FC<{ entry: InternalLogEntry & { stepTitle: string } }> = ({ entry }) => {
+  const colorClass = LOG_COLORS[entry.level] ?? 'text-gray-300';
+  const ts = entry.ts ? new Date(entry.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
+  return (
+    <div className={`leading-5 whitespace-pre-wrap break-all ${colorClass}`}>
+      <span className="text-gray-600 select-none">{ts && `${ts} `}</span>
+      <span className="text-blue-400 select-none">[{entry.stepTitle}] </span>
       {entry.line}
     </div>
   );
