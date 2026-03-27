@@ -1,0 +1,12 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "type": "command",
+        "osx": "bash -c 'input=$(cat); tool=$(echo \"$input\" | python3 -c \"import sys,json; d=json.load(sys.stdin); print(d.get('toolName',''))\" 2>/dev/null); cmd=$(echo \"$input\" | python3 -c \"import sys,json; d=json.load(sys.stdin); i=d.get('toolInput',{}); print(i.get('command',i.get('input','')))\" 2>/dev/null); if [ \"$tool\" = \"run_in_terminal\" ] && echo \"$cmd\" | grep -qE \"git (commit|push|tag)\"; then printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"ask\",\"permissionDecisionReason\":\"Agent wants to run a git commit/push/tag - approve or deny?\"}}'; fi'",
+        "windows": "powershell -NoProfile -NonInteractive -Command \"$i=[Console]::In.ReadToEnd();$d=$i|ConvertFrom-Json -EA SilentlyContinue;$t=$d.toolName;$c=if($d.toolInput.command){$d.toolInput.command}elseif($d.toolInput.input){$d.toolInput.input}else{exit 0};if($t -eq 'run_in_terminal' -and $c -match 'git[\\s]+(commit|push|tag)'){Write-Output '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"ask\",\"permissionDecisionReason\":\"Agent wants to run a git commit/push/tag - approve or deny?\"}}'}\"",
+        "timeout": 10
+      }
+    ]
+  }
+}
