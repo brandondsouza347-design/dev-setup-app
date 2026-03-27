@@ -9,7 +9,7 @@ $DistroName  = "ERC"
 
 # Default paths if not provided via environment
 if (-not $TarPath) {
-    $TarPath = Join-Path $env:USERPROFILE "ubuntu_22.04_modified.tar"
+    $TarPath = Join-Path $env:USERPROFILE "erc_ubuntu.tar"
 }
 if (-not $InstallDir) {
     $InstallDir = Join-Path $env:USERPROFILE "WSL\Ubuntu-22.04"
@@ -27,7 +27,7 @@ if (-not (Test-Path $TarPath)) {
     Write-Host "ERROR: TAR file not found at: $TarPath" -ForegroundColor Red
     Write-Host ""
     Write-Host "Please place the Ubuntu 22.04 TAR file at one of these locations:" -ForegroundColor Yellow
-    Write-Host "  - $($env:USERPROFILE)\ubuntu_22.04_modified.tar" -ForegroundColor Yellow
+    Write-Host "  - $($env:USERPROFILE)\erc_ubuntu.tar" -ForegroundColor Yellow
     Write-Host "  - Or configure the path in the Settings screen." -ForegroundColor Yellow
     exit 1
 }

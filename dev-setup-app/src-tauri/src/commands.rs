@@ -1,5 +1,5 @@
 // commands.rs — Tauri command handlers exposed to the React frontend
-use crate::orchestrator::{execute_script, get_steps_for_os, SetupStep};
+use crate::orchestrator::{execute_script, find_step_by_id, get_revert_steps_for_os, get_steps_for_os, SetupStep};
 use crate::state::{AppState, StepStatus, UserConfig};
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
@@ -71,6 +71,12 @@ pub fn detect_os() -> OsInfo {
 #[tauri::command]
 pub fn get_setup_steps(os: String) -> Vec<SetupStep> {
     get_steps_for_os(&os)
+}
+
+/// Returns the ordered list of revert steps for the detected OS (Windows only).
+#[tauri::command]
+pub fn get_revert_steps(os: String) -> Vec<SetupStep> {
+    get_revert_steps_for_os(&os)
 }
 
 /// Starts the full setup sequence from step 0.
@@ -165,8 +171,7 @@ pub async fn run_step(
     let (step, config) = {
         let s = state.lock().unwrap();
         let os = detect_os();
-        let steps = get_steps_for_os(&os.os);
-        let step = steps.into_iter().find(|s| s.id == step_id)
+        let step = find_step_by_id(&os.os, &step_id)
             .ok_or_else(|| { log::error!("run_step: unknown step_id={}", step_id); format!("Unknown step: {}", step_id) })?;
         (step, s.config.clone())
     };
@@ -208,6 +213,52 @@ pub async fn run_step(
             Err(err)
         }
     }
+}
+
+/// Runs the full revert sequence in order: shutdown WSL → remove distro → reset config → clean hosts → disable features.
+/// Stops on first failure. Emits step_status and revert_complete events.
+#[tauri::command]
+pub async fn start_revert(
+    window: WebviewWindow,
+    app_handle: AppHandle,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<(), String> {
+    let config = {
+        state.lock().unwrap().config.clone()
+    };
+    let os = detect_os();
+    let revert_steps = get_revert_steps_for_os(&os.os);
+    if revert_steps.is_empty() {
+        return Err("Revert is only supported on Windows".to_string());
+    }
+    log::info!("start_revert: beginning revert sequence ({} steps)", revert_steps.len());
+
+    for step in &revert_steps {
+        log::info!("start_revert: running revert step '{}'", step.id);
+        let _ = window.emit("step_status", serde_json::json!({ "id": step.id, "status": "running" }));
+
+        let start = std::time::Instant::now();
+        let result = execute_script(window.clone(), app_handle.clone(), step, &config).await;
+        let duration = start.elapsed().as_secs();
+
+        match result {
+            Ok(_) => {
+                log::info!("start_revert: step '{}' done in {}s", step.id, duration);
+                let _ = window.emit("step_status", serde_json::json!({ "id": step.id, "status": "done" }));
+            }
+            Err(err) => {
+                log::error!("start_revert: step '{}' FAILED after {}s — {}", step.id, duration, err);
+                let _ = window.emit(
+                    "step_status",
+                    serde_json::json!({ "id": step.id, "status": "failed", "error": err }),
+                );
+                return Err(format!("Revert step '{}' failed: {}", step.title, err));
+            }
+        }
+    }
+
+    let _ = window.emit("revert_complete", true);
+    Ok(())
 }
 
 /// Marks a step as failed → pending and increments retry counter, then reruns it.

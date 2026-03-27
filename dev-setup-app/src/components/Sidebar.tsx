@@ -1,5 +1,5 @@
 // components/Sidebar.tsx — Navigation sidebar showing step progress
-import { Monitor, Apple, Settings, List, Activity, CheckSquare, Home } from 'lucide-react';
+import { Monitor, Apple, Settings, List, Activity, CheckSquare, Home, RotateCcw } from 'lucide-react';
 import type { OsInfo, WizardPage, SetupStep, StepResult } from '../types';
 import { StepBadge } from './StepBadge';
 
@@ -36,6 +36,7 @@ export const Sidebar: React.FC<Props> = ({
     { id: 'settings', label: 'Settings',   icon: <Settings className="w-4 h-4" /> },
     { id: 'wizard',   label: 'Plan',       icon: <List className="w-4 h-4" /> },
     { id: 'progress', label: 'Progress',   icon: <Activity className="w-4 h-4" /> },
+    { id: 'revert',   label: 'Revert',     icon: <RotateCcw className="w-4 h-4" /> },
   ];
 
   return (

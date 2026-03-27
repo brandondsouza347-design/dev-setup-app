@@ -51,9 +51,9 @@ export const WizardStepList: React.FC<Props> = ({
         <div className="mb-4 flex items-start gap-3 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
           <AlertTriangle className="w-5 h-5 text-yellow-600 shrink-0 mt-0.5" />
           <div className="text-sm text-yellow-800 dark:text-yellow-200">
-            <strong>WSL TAR path not set.</strong> The "Import Ubuntu 22.04" step will fail without
+            <strong>WSL TAR path not set.</strong> The “Import ERC Ubuntu” step will fail without
             it. Go back to Settings and set the path to your{' '}
-            <code>ubuntu_22.04_modified.tar</code> file.
+            <code>erc_ubuntu.tar</code> file.
           </div>
         </div>
       )}

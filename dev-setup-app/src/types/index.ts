@@ -21,7 +21,8 @@ export type StepCategory =
   | 'vcs'
   | 'editor'
   | 'wsl'
-  | 'network';
+  | 'network'
+  | 'revert';
 
 export interface SetupStep {
   id: string;
@@ -95,4 +96,5 @@ export type WizardPage =
   | 'settings'
   | 'wizard'
   | 'progress'
-  | 'complete';
+  | 'complete'
+  | 'revert';

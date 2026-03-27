@@ -29,6 +29,11 @@ interface UseSetupReturn {
   setupComplete: boolean;
   isRunning: boolean;
   page: WizardPage;
+  // Revert
+  revertSteps: SetupStep[];
+  revertResults: Record<string, StepResult>;
+  isReverting: boolean;
+  revertComplete: boolean;
 
   // Actions
   setPage: (p: WizardPage) => void;
@@ -40,6 +45,10 @@ interface UseSetupReturn {
   skipStep: (id: string) => Promise<void>;
   resetSetup: () => Promise<void>;
   openTerminal: () => Promise<void>;
+  // Revert actions
+  startRevert: () => Promise<void>;
+  retryRevertStep: (id: string) => Promise<void>;
+  resetRevert: () => void;
 }
 
 export function useSetup(): UseSetupReturn {
@@ -64,6 +73,13 @@ export function useSetup(): UseSetupReturn {
   const [setupComplete, setSetupComplete] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
 
+  // Revert state
+  const [revertSteps, setRevertSteps] = useState<SetupStep[]>([]);
+  const [revertResults, setRevertResults] = useState<Record<string, StepResult>>({});
+  const [isReverting, setIsReverting] = useState(false);
+  const [revertComplete, setRevertComplete] = useState(false);
+  const revertStepIdsRef = useRef<Set<string>>(new Set());
+
   const unlistenRefs = useRef<UnlistenFn[]>([]);
 
   // ── Bootstrap: detect OS, load steps and config ─────────────────────────
@@ -75,6 +91,11 @@ export function useSetup(): UseSetupReturn {
 
         const stepsData = await invoke<SetupStep[]>('get_setup_steps', { os: info.os });
         setSteps(stepsData);
+
+        // Load revert steps (Windows only — empty on macOS)
+        const revertData = await invoke<SetupStep[]>('get_revert_steps', { os: info.os });
+        setRevertSteps(revertData);
+        revertStepIdsRef.current = new Set(revertData.map((s) => s.id));
 
         const cfg = await invoke<UserConfig>('get_config');
         setConfig(cfg);
@@ -124,23 +145,38 @@ export function useSetup(): UseSetupReturn {
       const unlistenStatus = await listen<StepStatusEvent>('step_status', (event) => {
         if (!mounted) return;
         const { id, status, error } = event.payload;
-        setStepResults((prev) => {
-          const existing = prev[id] ?? {
-            id,
-            status: 'pending' as StepStatus,
-            logs: [],
-            error: null,
-            retry_count: 0,
-            duration_secs: null,
-          };
-          return {
+        const isRevert = revertStepIdsRef.current.has(id);
+
+        const result = {
+          id,
+          status,
+          error: error ?? null,
+          logs: [] as string[],
+          retry_count: 0,
+          duration_secs: null,
+        };
+
+        if (isRevert) {
+          setRevertResults((prev) => ({
             ...prev,
-            [id]: { ...existing, status, error: error ?? null },
-          };
-        });
-        if (status === 'running') {
-          const idx = steps.findIndex((s) => s.id === id);
-          if (idx >= 0) setCurrentStepIndex(idx);
+            [id]: { ...(prev[id] ?? result), status, error: error ?? null },
+          }));
+        } else {
+          setStepResults((prev) => {
+            const existing = prev[id] ?? {
+              id,
+              status: 'pending' as StepStatus,
+              logs: [],
+              error: null,
+              retry_count: 0,
+              duration_secs: null,
+            };
+            return { ...prev, [id]: { ...existing, status, error: error ?? null } };
+          });
+          if (status === 'running') {
+            const idx = steps.findIndex((s) => s.id === id);
+            if (idx >= 0) setCurrentStepIndex(idx);
+          }
         }
         // Emit a synthetic log entry for status transitions so Live Logs shows them
         const statusEntry: LogEntry = (() => {
@@ -170,7 +206,13 @@ export function useSetup(): UseSetupReturn {
         setPage('complete');
       });
 
-      unlistenRefs.current = [unlistenLog, unlistenStatus, unlistenComplete];
+      const unlistenRevertComplete = await listen<boolean>('revert_complete', () => {
+        if (!mounted) return;
+        setRevertComplete(true);
+        setIsReverting(false);
+      });
+
+      unlistenRefs.current = [unlistenLog, unlistenStatus, unlistenComplete, unlistenRevertComplete];
     };
 
     setupListeners();
@@ -255,6 +297,33 @@ export function useSetup(): UseSetupReturn {
     await invoke('open_terminal');
   }, []);
 
+  const startRevert = useCallback(async () => {
+    setIsReverting(true);
+    setRevertComplete(false);
+    setRevertResults({});
+    try {
+      await invoke('start_revert');
+    } catch (e) {
+      console.error('Revert error:', e);
+      setIsReverting(false);
+    }
+  }, []);
+
+  const retryRevertStep = useCallback(async (id: string) => {
+    setIsReverting(true);
+    try {
+      await invoke('run_step', { stepId: id });
+    } finally {
+      setIsReverting(false);
+    }
+  }, []);
+
+  const resetRevert = useCallback(() => {
+    setRevertResults({});
+    setRevertComplete(false);
+    setIsReverting(false);
+  }, []);
+
   return {
     osInfo,
     steps,
@@ -267,6 +336,10 @@ export function useSetup(): UseSetupReturn {
     setupComplete,
     isRunning,
     page,
+    revertSteps,
+    revertResults,
+    isReverting,
+    revertComplete,
     setPage,
     runPrereqCheck,
     saveConfig,
@@ -276,5 +349,8 @@ export function useSetup(): UseSetupReturn {
     skipStep,
     resetSetup,
     openTerminal,
+    startRevert,
+    retryRevertStep,
+    resetRevert,
   };
 }

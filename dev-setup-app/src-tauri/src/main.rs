@@ -34,6 +34,8 @@ fn main() {
             commands::open_terminal,
             commands::get_config,
             commands::save_config,
+            commands::get_revert_steps,
+            commands::start_revert,
         ])
         .setup(|_app| {
             log::info!(

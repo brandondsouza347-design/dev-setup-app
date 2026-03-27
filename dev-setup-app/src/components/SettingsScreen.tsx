@@ -128,28 +128,28 @@ export const SettingsScreen: React.FC<Props> = ({ config, osInfo, onUpdate, onSa
         {/* WSL (Windows only) */}
         {isWindows && (
           <Section title="WSL Configuration">
-            <Field label="Ubuntu 22.04 TAR File" hint="Path to ubuntu_22.04_modified.tar">
+            <Field label="ERC Ubuntu TAR File" hint="Path to erc_ubuntu.tar (or ubuntu_22.04_modified.tar)">
               <div className="flex gap-2">
                 <input
                   type="text"
                   value={config.wsl_tar_path ?? ''}
                   onChange={(e) => update('wsl_tar_path', e.target.value || null)}
                   className="input flex-1"
-                  placeholder="C:\Users\you\ubuntu_22.04_modified.tar"
+                  placeholder="C:\Users\you\erc_ubuntu.tar"
                 />
                 <button onClick={browseTar} className="btn-secondary flex items-center gap-1 px-3">
                   <FolderOpen className="w-4 h-4" />
                 </button>
               </div>
             </Field>
-            <Field label="WSL Install Directory" hint="Where to extract the WSL distro">
+            <Field label="WSL Install Directory" hint="Where to extract the ERC distro">
               <div className="flex gap-2">
                 <input
                   type="text"
                   value={config.wsl_install_dir ?? ''}
                   onChange={(e) => update('wsl_install_dir', e.target.value || null)}
                   className="input flex-1"
-                  placeholder="C:\Users\you\WSL\Ubuntu-22.04"
+                  placeholder="C:\Users\you\WSL\ERC"
                 />
                 <button onClick={browseDir} className="btn-secondary flex items-center gap-1 px-3">
                   <FolderOpen className="w-4 h-4" />

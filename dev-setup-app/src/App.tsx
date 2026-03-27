@@ -7,6 +7,7 @@ import { SettingsScreen } from './components/SettingsScreen';
 import { WizardStepList } from './components/WizardStepList';
 import { ProgressDashboard } from './components/ProgressDashboard';
 import { CompleteScreen } from './components/CompleteScreen';
+import { RevertScreen } from './components/RevertScreen';
 
 function App() {
   const setup = useSetup();
@@ -97,6 +98,22 @@ function App() {
               osInfo={setup.osInfo}
               onReset={setup.resetSetup}
               onOpenTerminal={setup.openTerminal}
+            />
+          </div>
+        )}
+
+        {setup.page === 'revert' && (
+          <div className="h-full overflow-hidden flex flex-col">
+            <RevertScreen
+              osInfo={setup.osInfo}
+              revertSteps={setup.revertSteps}
+              revertResults={setup.revertResults}
+              logs={setup.logs}
+              isReverting={setup.isReverting}
+              revertComplete={setup.revertComplete}
+              onStartRevert={setup.startRevert}
+              onRetryStep={setup.retryRevertStep}
+              onReset={setup.resetRevert}
             />
           </div>
         )}

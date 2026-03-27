@@ -38,6 +38,7 @@ pub enum StepCategory {
     Editor,
     Wsl,
     Network,
+    Revert,
 }
 
 #[derive(Clone, Serialize)]
@@ -54,6 +55,68 @@ pub enum LogLevel {
     Warn,
     Error,
     Success,
+}
+
+/// Returns revert steps (Windows only — undoes WSL setup).
+pub fn get_revert_steps_for_os(os: &str) -> Vec<SetupStep> {
+    if os != "windows" {
+        return vec![];
+    }
+    vec![
+        SetupStep {
+            id: "revert_shutdown_wsl".to_string(),
+            title: "Shutdown WSL".to_string(),
+            description: "Gracefully stop all running WSL instances to prevent data corruption and memory leaks before reverting.".to_string(),
+            platform: Platform::Windows,
+            category: StepCategory::Revert,
+            required: true,
+            estimated_minutes: 1,
+        },
+        SetupStep {
+            id: "revert_wsl_distro".to_string(),
+            title: "Remove ERC Distro".to_string(),
+            description: "Export a backup of the ERC distro to ~/WSL_Backup/, then unregister and delete it from WSL. All data inside will be permanently deleted.".to_string(),
+            platform: Platform::Windows,
+            category: StepCategory::Revert,
+            required: true,
+            estimated_minutes: 15,
+        },
+        SetupStep {
+            id: "revert_wslconfig".to_string(),
+            title: "Reset .wslconfig".to_string(),
+            description: "Remove networkingMode=mirrored from ~/.wslconfig. The file is deleted if no other settings remain.".to_string(),
+            platform: Platform::Windows,
+            category: StepCategory::Revert,
+            required: true,
+            estimated_minutes: 1,
+        },
+        SetupStep {
+            id: "revert_windows_hosts".to_string(),
+            title: "Clean Windows Hosts File".to_string(),
+            description: "Remove dev hostnames (t3582.local, erckinetic) added by the setup tool. All other entries are preserved.".to_string(),
+            platform: Platform::Windows,
+            category: StepCategory::Revert,
+            required: true,
+            estimated_minutes: 1,
+        },
+        SetupStep {
+            id: "revert_wsl_features".to_string(),
+            title: "Disable WSL Windows Features".to_string(),
+            description: "Disable WSL and Virtual Machine Platform Windows features. A system restart is required to complete removal.".to_string(),
+            platform: Platform::Windows,
+            category: StepCategory::Revert,
+            required: false,
+            estimated_minutes: 2,
+        },
+    ]
+}
+
+/// Look up a step by ID across both setup and revert lists.
+pub fn find_step_by_id(os: &str, id: &str) -> Option<SetupStep> {
+    get_steps_for_os(os)
+        .into_iter()
+        .find(|s| s.id == id)
+        .or_else(|| get_revert_steps_for_os(os).into_iter().find(|s| s.id == id))
 }
 
 /// Returns the full ordered list of setup steps for the given OS.
@@ -395,6 +458,12 @@ fn build_script_command(
         "wslconfig_networking" => ("windows", "setup_wslconfig_networking.ps1", "powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),
         "wsl_cleanup"          => ("windows", "setup_wsl_cleanup.ps1",          "powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),
         "windows_hosts"        => ("windows", "setup_windows_hosts.ps1",        "powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),
+        // Revert scripts
+        "revert_shutdown_wsl"  => ("windows", "revert_wsl_shutdown.ps1",   "powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),
+        "revert_wsl_distro"    => ("windows", "revert_wsl_distro.ps1",     "powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),
+        "revert_wslconfig"     => ("windows", "revert_wslconfig.ps1",      "powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),
+        "revert_windows_hosts" => ("windows", "revert_windows_hosts.ps1",  "powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),
+        "revert_wsl_features"  => ("windows", "revert_wsl_features.ps1",   "powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),
         _ => return Err(format!("Unknown step id: {}", step.id)),
     };
 
