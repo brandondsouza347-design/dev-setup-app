@@ -36,19 +36,22 @@ echo ""
 echo "==> Step 2: Installing VS Code extensions..."
 
 EXTENSIONS=(
-    "atlassian.atlascode"           # Jira & Bitbucket
-    "amazonwebservices.aws-toolkit-vscode"  # AWS Toolkit
-    "ms-python.black-formatter"     # Black Formatter
-    "dbaeumer.vscode-eslint"        # ESLint
-    "mhutchie.git-graph"            # Git Graph
-    "ms-python.pylint"              # Pylint
-    "ms-python.python"              # Python
-    "ms-python.debugpy"             # Python Debugger
-    "humao.rest-client"             # REST Client
-    "codeium.codeium"               # Windsurf/Codeium AI
-    "redhat.vscode-yaml"            # YAML
-    "ms-vscode-remote.remote-wsl"   # Remote WSL (useful even on Mac)
-    "eamodio.gitlens"               # GitLens
+    "atlassian.atlascode"                       # Jira & Bitbucket
+    "amazonwebservices.aws-toolkit-vscode"      # AWS Toolkit
+    "ms-python.black-formatter"                 # Black Formatter
+    "dbaeumer.vscode-eslint"                    # ESLint
+    "mhutchie.git-graph"                        # Git Graph
+    "ms-python.pylint"                          # Pylint
+    "ms-python.python"                          # Python
+    "ms-python.debugpy"                         # Python Debugger
+    "humao.rest-client"                         # REST Client
+    "GitHub.copilot"                            # GitHub Copilot
+    "GitHub.copilot-chat"                       # GitHub Copilot Chat
+    "redhat.vscode-yaml"                        # YAML
+    "eamodio.gitlens"                           # GitLens
+    "pkief.material-icon-theme"                 # Material Icon Theme
+    "cweijan.vscode-postgresql-client2"         # PostgreSQL Client
+    "liviuschera.noctis"                        # Noctis Theme
 )
 
 INSTALLED=0
@@ -107,9 +110,10 @@ cat > "$SETTINGS_FILE" << SETTINGS_JSON
     "git.confirmSync": false,
     "gitlens.hovers.currentLine.over": "line",
     "yaml.schemas": {},
-    "workbench.colorTheme": "Default Dark Modern",
-    "workbench.iconTheme": "vs-seti",
-    "window.zoomLevel": 0
+    "workbench.colorTheme": "Noctis",
+    "workbench.iconTheme": "material-icon-theme",
+    "window.zoomLevel": 0,
+    "task.allowAutomaticTasks": "on"
 }
 SETTINGS_JSON
 
@@ -136,6 +140,50 @@ if ! grep -q "NVM_DIR" ~/.zshrc 2>/dev/null; then
     echo 'export NVM_DIR="$HOME/.nvm"' >> ~/.zshrc
     echo '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"' >> ~/.zshrc
     echo "   Added nvm config to ~/.zshrc"
+fi
+
+# ─── 5. Write MCP config ─────────────────────────────────────────────────────
+
+echo ""
+echo "==> Step 5: Writing VS Code MCP config..."
+
+MCP_FILE="$HOME/Library/Application Support/Code/User/mcp.json"
+
+if [ -f "$MCP_FILE" ]; then
+    echo "   ⚠ $MCP_FILE already exists — skipping to avoid overwriting customisations"
+    echo "   Ensure the following servers are present:"
+    echo "     kibana  (@tocharian/mcp-server-kibana)"
+    echo "     gitlab  (@zereight/mcp-gitlab)"
+else
+    cat > "$MCP_FILE" << 'MCP_JSON'
+{
+    "servers": {
+        "kibana": {
+            "type": "stdio",
+            "command": "npx",
+            "args": ["@tocharian/mcp-server-kibana"],
+            "env": {
+                "KIBANA_URL": "https://mulog.toogoerp.net",
+                "KIBANA_DEFAULT_SPACE": "default",
+                "NODE_TLS_REJECT_UNAUTHORIZED": "0"
+            }
+        },
+        "gitlab": {
+            "type": "stdio",
+            "command": "npx",
+            "args": ["-y", "@zereight/mcp-gitlab"],
+            "env": {
+                "GITLAB_PERSONAL_ACCESS_TOKEN": "<your-gitlab-pat-here>",
+                "GITLAB_API_URL": "https://gitlab.toogoerp.net",
+                "USE_GITLAB_WIKI": "true",
+                "USE_MILESTONE": "true"
+            }
+        }
+    }
+}
+MCP_JSON
+    echo "✓ MCP config written to: $MCP_FILE"
+    echo "  ACTION REQUIRED: Replace <your-gitlab-pat-here> with your actual GitLab PAT"
 fi
 
 echo ""

@@ -50,20 +50,24 @@ Write-Host "✓ VS Code found: $CodeCmd"
 Write-Host "`n==> Step 2: Installing VS Code extensions..."
 
 $Extensions = @(
-    "ms-vscode-remote.remote-wsl",      # Remote - WSL (critical)
+    "ms-vscode-remote.remote-wsl",              # Remote - WSL (critical)
     "ms-vscode-remote.vscode-remote-extensionpack",
-    "atlassian.atlascode",              # Jira & Bitbucket
-    "amazonwebservices.aws-toolkit-vscode",
-    "ms-python.black-formatter",
-    "dbaeumer.vscode-eslint",
-    "mhutchie.git-graph",
-    "ms-python.pylint",
-    "ms-python.python",
-    "ms-python.debugpy",
-    "humao.rest-client",
-    "codeium.codeium",
-    "redhat.vscode-yaml",
-    "eamodio.gitlens"
+    "atlassian.atlascode",                      # Jira & Bitbucket
+    "amazonwebservices.aws-toolkit-vscode",     # AWS Toolkit
+    "ms-python.black-formatter",                # Black Formatter
+    "dbaeumer.vscode-eslint",                   # ESLint
+    "mhutchie.git-graph",                       # Git Graph
+    "ms-python.pylint",                         # Pylint
+    "ms-python.python",                         # Python
+    "ms-python.debugpy",                        # Python Debugger
+    "humao.rest-client",                        # REST Client
+    "GitHub.copilot",                           # GitHub Copilot
+    "GitHub.copilot-chat",                      # GitHub Copilot Chat
+    "redhat.vscode-yaml",                       # YAML
+    "eamodio.gitlens",                          # GitLens
+    "pkief.material-icon-theme",                # Material Icon Theme
+    "cweijan.vscode-postgresql-client2",        # PostgreSQL Client
+    "liviuschera.noctis"                        # Noctis Theme
 )
 
 $installed = 0
@@ -115,9 +119,10 @@ $Settings = @"
     "git.autofetch": true,
     "git.confirmSync": false,
     "remote.WSL.fileWatcher.polling": true,
-    "workbench.colorTheme": "Default Dark Modern",
-    "workbench.iconTheme": "vs-seti",
-    "window.zoomLevel": 0
+    "workbench.colorTheme": "Noctis",
+    "workbench.iconTheme": "material-icon-theme",
+    "window.zoomLevel": 0,
+    "task.allowAutomaticTasks": "on"
 }
 "@
 
@@ -143,6 +148,51 @@ foreach ($ext in $wslExtensions) {
     } catch {
         Write-Host "   ⚠ Could not install in WSL: $ext"
     }
+}
+
+# ─── 5. Write MCP config ─────────────────────────────────────────────────────
+
+Write-Host "`n==> Step 5: Writing VS Code MCP config..."
+
+$McpFile = Join-Path $env:APPDATA "Code\User\mcp.json"
+
+if (Test-Path $McpFile) {
+    Write-Host "   ⚠ $McpFile already exists — skipping to avoid overwriting customisations"
+    Write-Host "   Ensure the following servers are present:"
+    Write-Host "     kibana  (@tocharian/mcp-server-kibana)"
+    Write-Host "     gitlab  (@zereight/mcp-gitlab)"
+} else {
+    $McpConfig = @"
+{
+    "servers": {
+        "kibana": {
+            "type": "stdio",
+            "command": "npx",
+            "args": ["@tocharian/mcp-server-kibana"],
+            "env": {
+                "KIBANA_URL": "https://mulog.toogoerp.net",
+                "KIBANA_DEFAULT_SPACE": "default",
+                "NODE_TLS_REJECT_UNAUTHORIZED": "0"
+            }
+        },
+        "gitlab": {
+            "type": "stdio",
+            "command": "npx",
+            "args": ["-y", "@zereight/mcp-gitlab"],
+            "env": {
+                "GITLAB_PERSONAL_ACCESS_TOKEN": "<your-gitlab-pat-here>",
+                "GITLAB_API_URL": "https://gitlab.toogoerp.net",
+                "USE_GITLAB_WIKI": "true",
+                "USE_MILESTONE": "true"
+            }
+        }
+    }
+}
+"@
+    New-Item -ItemType Directory -Path (Split-Path $McpFile) -Force | Out-Null
+    Set-Content -Path $McpFile -Value $McpConfig -Encoding UTF8
+    Write-Host "✓ MCP config written to: $McpFile"
+    Write-Host "  ACTION REQUIRED: Replace <your-gitlab-pat-here> with your actual GitLab PAT"
 }
 
 Write-Host "`n✓ VS Code Windows/WSL setup complete!" -ForegroundColor Green

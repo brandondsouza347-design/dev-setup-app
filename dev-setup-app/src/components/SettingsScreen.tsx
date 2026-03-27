@@ -7,27 +7,27 @@ import type { UserConfig, WizardPage, OsInfo } from '../types';
 interface Props {
   config: UserConfig;
   osInfo: OsInfo | null;
+  onUpdate: (cfg: UserConfig) => void;
   onSave: (cfg: UserConfig) => Promise<void>;
   onNext: (page: WizardPage) => void;
   onBack: () => void;
 }
 
-export const SettingsScreen: React.FC<Props> = ({ config, osInfo, onSave, onNext, onBack }) => {
-  const [local, setLocal] = useState<UserConfig>({ ...config });
+export const SettingsScreen: React.FC<Props> = ({ config, osInfo, onUpdate, onSave, onNext, onBack }) => {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
   const isWindows = osInfo?.os === 'windows';
 
   const update = <K extends keyof UserConfig>(key: K, value: UserConfig[K]) => {
-    setLocal((prev) => ({ ...prev, [key]: value }));
+    onUpdate({ ...config, [key]: value });
     setSaved(false);
   };
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      await onSave(local);
+      await onSave(config);
       setSaved(true);
     } finally {
       setSaving(false);
@@ -73,7 +73,7 @@ export const SettingsScreen: React.FC<Props> = ({ config, osInfo, onSave, onNext
           <Field label="Python Version" hint="Installed via pyenv">
             <input
               type="text"
-              value={local.python_version}
+              value={config.python_version}
               onChange={(e) => update('python_version', e.target.value)}
               className="input"
               placeholder="3.9.21"
@@ -82,7 +82,7 @@ export const SettingsScreen: React.FC<Props> = ({ config, osInfo, onSave, onNext
           <Field label="Virtualenv Name" hint="Name of the pyenv virtual environment">
             <input
               type="text"
-              value={local.venv_name}
+              value={config.venv_name}
               onChange={(e) => update('venv_name', e.target.value)}
               className="input"
               placeholder="erc"
@@ -95,10 +95,10 @@ export const SettingsScreen: React.FC<Props> = ({ config, osInfo, onSave, onNext
           <Field label="Node Version" hint="Installed via NVM">
             <input
               type="text"
-              value={local.node_version}
+              value={config.node_version}
               onChange={(e) => update('node_version', e.target.value)}
               className="input"
-              placeholder="16.20.2"
+              placeholder="22.10.0"
             />
           </Field>
         </Section>
@@ -108,16 +108,16 @@ export const SettingsScreen: React.FC<Props> = ({ config, osInfo, onSave, onNext
           <Field label="Database Name" hint="Project database to create">
             <input
               type="text"
-              value={local.postgres_db_name}
+              value={config.postgres_db_name}
               onChange={(e) => update('postgres_db_name', e.target.value)}
               className="input"
-              placeholder="dev_db"
+              placeholder="toogo_pos"
             />
           </Field>
           <Field label="postgres Role Password" hint="Password for the 'postgres' superuser role">
             <input
               type="password"
-              value={local.postgres_password}
+              value={config.postgres_password}
               onChange={(e) => update('postgres_password', e.target.value)}
               className="input"
               placeholder="postgres"
@@ -132,7 +132,7 @@ export const SettingsScreen: React.FC<Props> = ({ config, osInfo, onSave, onNext
               <div className="flex gap-2">
                 <input
                   type="text"
-                  value={local.wsl_tar_path ?? ''}
+                  value={config.wsl_tar_path ?? ''}
                   onChange={(e) => update('wsl_tar_path', e.target.value || null)}
                   className="input flex-1"
                   placeholder="C:\Users\you\ubuntu_22.04_modified.tar"
@@ -146,7 +146,7 @@ export const SettingsScreen: React.FC<Props> = ({ config, osInfo, onSave, onNext
               <div className="flex gap-2">
                 <input
                   type="text"
-                  value={local.wsl_install_dir ?? ''}
+                  value={config.wsl_install_dir ?? ''}
                   onChange={(e) => update('wsl_install_dir', e.target.value || null)}
                   className="input flex-1"
                   placeholder="C:\Users\you\WSL\Ubuntu-22.04"
@@ -165,7 +165,7 @@ export const SettingsScreen: React.FC<Props> = ({ config, osInfo, onSave, onNext
             <input
               type="checkbox"
               id="skip-installed"
-              checked={local.skip_already_installed}
+              checked={config.skip_already_installed}
               onChange={(e) => update('skip_already_installed', e.target.checked)}
               className="w-4 h-4 rounded border-gray-300"
             />

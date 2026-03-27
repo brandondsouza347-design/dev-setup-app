@@ -199,6 +199,60 @@ fn all_steps() -> Vec<SetupStep> {
             required: false,
             estimated_minutes: 5,
         },
+        SetupStep {
+            id: "ubuntu_user_wsl".to_string(),
+            title: "Configure Ubuntu User (WSL)".to_string(),
+            description: "Check if an 'ubuntu' user exists inside WSL Ubuntu. Creates and configures it if not present; skips automatically if already set up.".to_string(),
+            platform: Platform::Windows,
+            category: StepCategory::Wsl,
+            required: false,
+            estimated_minutes: 2,
+        },
+        SetupStep {
+            id: "postgres_wsl".to_string(),
+            title: "Install PostgreSQL (WSL)".to_string(),
+            description: "Check if PostgreSQL is installed inside WSL Ubuntu. Installs and initialises it if missing; skips automatically if already present.".to_string(),
+            platform: Platform::Windows,
+            category: StepCategory::Database,
+            required: false,
+            estimated_minutes: 5,
+        },
+        SetupStep {
+            id: "redis_wsl".to_string(),
+            title: "Install Redis (WSL)".to_string(),
+            description: "Check if Redis is installed inside WSL Ubuntu. Installs and starts it if missing; skips automatically if already present.".to_string(),
+            platform: Platform::Windows,
+            category: StepCategory::Cache,
+            required: false,
+            estimated_minutes: 3,
+        },
+        SetupStep {
+            id: "wslconfig_networking".to_string(),
+            title: "Configure .wslconfig (Mirrored Networking)".to_string(),
+            description: "Create or update C:\\Users\\<you>\\.wslconfig with networkingMode=mirrored so WSL shares the Windows network interface. Skips if already configured.".to_string(),
+            platform: Platform::Windows,
+            category: StepCategory::Network,
+            required: false,
+            estimated_minutes: 1,
+        },
+        SetupStep {
+            id: "wsl_cleanup".to_string(),
+            title: "WSL Cleanup & Set Default Distro".to_string(),
+            description: "List WSL distros, set the imported ERC distro as the default, and unregister any stale Ubuntu instances. Skips if already clean.".to_string(),
+            platform: Platform::Windows,
+            category: StepCategory::Wsl,
+            required: false,
+            estimated_minutes: 2,
+        },
+        SetupStep {
+            id: "windows_hosts".to_string(),
+            title: "Update Windows Hosts File".to_string(),
+            description: "Add 127.0.0.1 t3582.local (and optional tenant entries) to C:\\Windows\\System32\\drivers\\etc\\hosts. Skips if entries already present.".to_string(),
+            platform: Platform::Windows,
+            category: StepCategory::Network,
+            required: false,
+            estimated_minutes: 1,
+        },
     ]
 }
 
@@ -333,7 +387,15 @@ fn build_script_command(
         "vscode_windows"=> ("windows", "setup_vscode_windows.ps1","powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),
         "git_ssh_windows"=>("windows","setup_git_ssh.ps1",        "powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),        // Windows — WSL-side bash scripts (invoked via wsl bash)
         "pyenv_wsl"       => ("windows", "setup_pyenv_wsl.sh",         "wsl",        vec!["bash".to_string()]),
-        "nvm_wsl"         => ("windows", "setup_nvm_wsl.sh",           "wsl",        vec!["bash".to_string()]),        _ => return Err(format!("Unknown step id: {}", step.id)),
+        "nvm_wsl"          => ("windows", "setup_nvm_wsl.sh",           "wsl",        vec!["bash".to_string()]),
+        "ubuntu_user_wsl"  => ("windows", "setup_ubuntu_user_wsl.sh",   "wsl",        vec!["bash".to_string()]),
+        "postgres_wsl"     => ("windows", "setup_postgres_wsl.sh",      "wsl",        vec!["bash".to_string()]),
+        "redis_wsl"        => ("windows", "setup_redis_wsl.sh",         "wsl",        vec!["bash".to_string()]),
+        // Windows-side PowerShell scripts
+        "wslconfig_networking" => ("windows", "setup_wslconfig_networking.ps1", "powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),
+        "wsl_cleanup"          => ("windows", "setup_wsl_cleanup.ps1",          "powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),
+        "windows_hosts"        => ("windows", "setup_windows_hosts.ps1",        "powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),
+        _ => return Err(format!("Unknown step id: {}", step.id)),
     };
 
     let path = script_path(app_handle, &format!("{}/{}", script_subdir, script_name))

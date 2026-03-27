@@ -34,6 +34,7 @@ interface UseSetupReturn {
   setPage: (p: WizardPage) => void;
   runPrereqCheck: () => Promise<void>;
   saveConfig: (cfg: UserConfig) => Promise<void>;
+  updateConfig: (cfg: UserConfig) => void;
   startSetup: () => Promise<void>;
   retryStep: (id: string) => Promise<void>;
   skipStep: (id: string) => Promise<void>;
@@ -141,6 +142,25 @@ export function useSetup(): UseSetupReturn {
           const idx = steps.findIndex((s) => s.id === id);
           if (idx >= 0) setCurrentStepIndex(idx);
         }
+        // Emit a synthetic log entry for status transitions so Live Logs shows them
+        const statusEntry: LogEntry = (() => {
+          switch (status) {
+            case 'done':
+              return { stepId: id, line: '✓ Step completed successfully', level: 'success', ts: Date.now() };
+            case 'failed':
+              return { stepId: id, line: `✗ Step failed${error ? `: ${error}` : ''}`, level: 'error', ts: Date.now() };
+            case 'skipped':
+              return { stepId: id, line: '⏭ Step skipped', level: 'warn', ts: Date.now() };
+            case 'running':
+              return { stepId: id, line: '▶ Step started', level: 'info', ts: Date.now() };
+            default:
+              return { stepId: id, line: `Status: ${status}`, level: 'info', ts: Date.now() };
+          }
+        })();
+        setLogs((prev) => ({
+          ...prev,
+          [id]: [...(prev[id] ?? []), statusEntry],
+        }));
       });
 
       const unlistenComplete = await listen<boolean>('setup_complete', () => {
@@ -183,6 +203,10 @@ export function useSetup(): UseSetupReturn {
     setConfig(cfg);
   }, []);
 
+  const updateConfig = useCallback((cfg: UserConfig) => {
+    setConfig(cfg);
+  }, []);
+
   const startSetup = useCallback(async () => {
     setIsRunning(true);
     setSetupStarted(true);
@@ -209,6 +233,10 @@ export function useSetup(): UseSetupReturn {
     setStepResults((prev) => ({
       ...prev,
       [id]: { ...(prev[id] ?? { id, logs: [], error: null, retry_count: 0, duration_secs: null }), status: 'skipped' },
+    }));
+    setLogs((prev) => ({
+      ...prev,
+      [id]: [...(prev[id] ?? []), { stepId: id, line: '⏭ Step skipped by user', level: 'warn', ts: Date.now() }],
     }));
   }, []);
 
@@ -242,6 +270,7 @@ export function useSetup(): UseSetupReturn {
     setPage,
     runPrereqCheck,
     saveConfig,
+    updateConfig,
     startSetup,
     retryStep,
     skipStep,

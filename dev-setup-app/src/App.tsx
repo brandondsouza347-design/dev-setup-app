@@ -51,6 +51,7 @@ function App() {
             <SettingsScreen
               config={setup.config}
               osInfo={setup.osInfo}
+              onUpdate={setup.updateConfig}
               onSave={setup.saveConfig}
               onNext={setup.setPage}
               onBack={() => setup.setPage('prereqs')}

@@ -31,16 +31,23 @@ export const WelcomeScreen: React.FC<Props> = ({ osInfo, onNext }) => {
         '🟢 NVM v0.40.1 + Node.js 22.10.0 + Gulp',
         '🐘 PostgreSQL 16 (with roles & databases)',
         '📦 Redis cache server',
-        '💙 VS Code extensions & configuration',
+        '💙 VS Code extensions + MCP config (Kibana, GitLab)',
       ]
     : [
         '🐧 WSL2 feature enablement',
         '📦 Ubuntu 22.04 import from TAR',
         '🌐 WSL network & DNS configuration',
-        '💙 VS Code + Remote-WSL extension',
+        '🔧 .wslconfig mirrored networking (skipped if present)',
+        '🧹 WSL cleanup & set ERC as default distro (skipped if clean)',
+        '💙 VS Code + Remote-WSL + required extensions + MCP config',
         '🔑 Git identity + SSH key generation',
+        '👤 Ubuntu user configuration (WSL — skipped if present)',
         '🐍 pyenv + Python 3.9.21 + erc virtualenv (WSL — skipped if present)',
         '🟢 NVM v0.40.1 + Node.js 22.10.0 (WSL — skipped if present)',
+        '🐘 PostgreSQL (WSL — skipped if present)',
+        '📦 Redis (WSL — skipped if present)',
+        '📝 Windows hosts file (.local tenant entries — skipped if present)',
+        '⚠️ OpenVPN, Atlassian MCP & tenant copy require manual setup',
       ];
 
   return (

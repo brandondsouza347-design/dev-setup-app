@@ -101,7 +101,7 @@ export const Sidebar: React.FC<Props> = ({
 
       {/* Footer */}
       <div className="px-5 py-3 border-t border-gray-700 text-xs text-gray-500">
-        v1.0.0
+        v{__APP_VERSION__}
       </div>
     </div>
   );
