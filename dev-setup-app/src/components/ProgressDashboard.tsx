@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   CheckCircle2, XCircle, Loader2, SkipForward, RotateCcw,
-  ChevronDown, ChevronRight, Terminal, Clock, ScrollText
+  ChevronDown, ChevronRight, Terminal, Clock, ScrollText, Undo2
 } from 'lucide-react';
 import type { SetupStep, StepResult, LogEntry, WizardPage } from '../types';
 import { StepBadge } from './StepBadge';
@@ -207,6 +207,24 @@ export const ProgressDashboard: React.FC<Props> = ({
                         Skip
                       </button>
                     )}
+                    <button
+                      onClick={() => onGoTo('revert')}
+                      className="flex items-center gap-1 px-3 py-1 text-xs border border-red-300 dark:border-red-700 text-red-500 dark:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                    >
+                      <Undo2 className="w-3 h-3" />
+                      Revert
+                    </button>
+                  </div>
+                )}
+                {status === 'done' && !isRunning && (
+                  <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => onGoTo('revert')}
+                      className="flex items-center gap-1 px-3 py-1 text-xs border border-red-300 dark:border-red-700 text-red-500 dark:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                    >
+                      <Undo2 className="w-3 h-3" />
+                      Revert
+                    </button>
                   </div>
                 )}
 
@@ -273,13 +291,24 @@ export const ProgressDashboard: React.FC<Props> = ({
 
       {/* Footer action bar */}
       <div className="px-6 py-3 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center justify-between">
-        <button
-          onClick={onOpenTerminal}
-          className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
-        >
-          <Terminal className="w-4 h-4" />
-          Open Terminal
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onOpenTerminal}
+            className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+          >
+            <Terminal className="w-4 h-4" />
+            Open Terminal
+          </button>
+          {!isRunning && doneCount > 0 && (
+            <button
+              onClick={() => onGoTo('revert')}
+              className="flex items-center gap-2 text-sm text-red-500 hover:text-red-700 dark:hover:text-red-400 transition-colors"
+            >
+              <Undo2 className="w-4 h-4" />
+              Revert Setup
+            </button>
+          )}
+        </div>
         {setupComplete && (
           <button
             onClick={() => onGoTo('complete')}

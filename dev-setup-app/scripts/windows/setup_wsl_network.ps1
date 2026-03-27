@@ -9,7 +9,7 @@ Write-Host "==> WSL Network Configuration" -ForegroundColor Cyan
 # ─── 1. Check WSL distro is available ───────────────────────────────────────
 
 Write-Host "`n==> Step 1: Checking WSL distro..."
-$existingDistros = wsl --list --quiet 2>$null | Where-Object { $_ -match $DistroName }
+$existingDistros = (wsl --list --quiet 2>$null) -replace '\0','' | Where-Object { $_ -match $DistroName }
 if (-not $existingDistros) {
     Write-Error "$DistroName is not installed. Run 'Import WSL TAR' step first."
 }

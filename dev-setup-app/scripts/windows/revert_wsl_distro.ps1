@@ -20,7 +20,7 @@ Write-Host "   If the backup cannot be confirmed, this script will EXIT and dele
 # ─── 1. Check distro is registered ──────────────────────────────────────────
 
 Write-Host "`n==> Step 1: Checking if $DistroName is registered..."
-$wslList = wsl --list --quiet 2>&1 | Where-Object { $_ -match '\S' }
+$wslList = (wsl --list --quiet 2>&1) -replace '\0','' | Where-Object { $_ -match '\S' }
 $distroExists = $wslList | Where-Object { $_.Trim() -ieq $DistroName }
 
 if (-not $distroExists) {
@@ -88,7 +88,7 @@ foreach ($dir in $InstallDirs) {
 # ─── 5. Verify removal ──────────────────────────────────────────────────────
 
 Write-Host "`n==> Step 5: Verifying distro is gone..."
-$remaining = wsl --list --quiet 2>&1 | Where-Object { $_.Trim() -ieq $DistroName }
+$remaining = (wsl --list --quiet 2>&1) -replace '\0','' | Where-Object { $_.Trim() -ieq $DistroName }
 if ($remaining) {
     Write-Host "   ⚠ '$DistroName' still appears in WSL list — may need reboot" -ForegroundColor Yellow
 } else {

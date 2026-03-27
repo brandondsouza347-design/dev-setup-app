@@ -38,7 +38,7 @@ Write-Host "✓ TAR file found: $([Math]::Round($TarSize, 2)) GB"
 # ─── 2. Check if distro already imported ────────────────────────────────────
 
 Write-Host "`n==> Step 2: Checking for existing distro..."
-$existingDistros = wsl --list --quiet 2>$null | Where-Object { $_ -match $DistroName }
+$existingDistros = (wsl --list --quiet 2>$null) -replace '\0','' | Where-Object { $_ -match $DistroName }
 if ($existingDistros) {
     Write-Host "✓ $DistroName is already registered in WSL"
     Write-Host "   Skipping import. Use 'wsl -d $DistroName' to access it."

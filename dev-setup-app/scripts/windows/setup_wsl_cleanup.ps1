@@ -5,7 +5,7 @@ $ErrorActionPreference = "Stop"
 Write-Host "==> setup_wsl_cleanup: inspecting WSL distros..."
 
 # Get list of registered distros
-$wslList = wsl --list --quiet 2>&1 | Where-Object { $_ -match '\S' }
+$wslList = (wsl --list --quiet 2>&1) -replace '\0','' | Where-Object { $_ -match '\S' }
 Write-Host "  Registered distros:"
 $wslList | ForEach-Object { Write-Host "    - $_" }
 

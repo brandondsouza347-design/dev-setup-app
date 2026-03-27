@@ -461,10 +461,10 @@ pub async fn execute_script_with_retry(
             emit_log(
                 &window,
                 &step.id,
-                "⚠ Transient failure — retrying once after 2s (common on first run)...",
+                "⚠ Transient failure — retrying once after 8s (common on first run)...",
                 LogLevel::Warn,
             );
-            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            tokio::time::sleep(std::time::Duration::from_secs(8)).await;
             execute_script(window, app_handle, step, config).await
         }
     }
