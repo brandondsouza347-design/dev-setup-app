@@ -353,17 +353,23 @@ pub async fn execute_script(
 
     emit_log(&window, &step.id, &format!("▶ Starting: {}", step.title), LogLevel::Info);
 
-    let mut child = tokio::process::Command::new(&program)
-        .args(&args)
-        .arg(&script_file)
-        .envs(build_env(config))
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| {
-            log::error!("execute_script: failed to spawn '{}' for step '{}' — {}", program, step.id, e);
-            format!("Failed to spawn process: {}", e)
-        })?;
+    let mut child = {
+        let mut cmd = tokio::process::Command::new(&program);
+        cmd.args(&args);
+        // script_file is empty when the path is already embedded in args
+        // (e.g. PowerShell -Command invocations) — skip to avoid a blank arg.
+        if !script_file.is_empty() {
+            cmd.arg(&script_file);
+        }
+        cmd.envs(build_env(config))
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| {
+                log::error!("execute_script: failed to spawn '{}' for step '{}' — {}", program, step.id, e);
+                format!("Failed to spawn process: {}", e)
+            })?
+    };
 
     let stdout = child.stdout.take().unwrap();
     let stderr = child.stderr.take().unwrap();
@@ -470,18 +476,35 @@ fn build_script_command(
     let path = script_path(app_handle, &format!("{}/{}", script_subdir, script_name))
         .map_err(|e| e)?;
 
-    // PowerShell's -File parameter does not accept the \\?\ extended-length
-    // path prefix that Rust's PathBuf emits on Windows — strip it if present.
+    // Strip the \\?\ extended-length prefix emitted by Rust's PathBuf on Windows.
     let path_str = {
         let s = path.to_string_lossy().to_string();
         if s.starts_with(r"\\?\") { s[4..].to_string() } else { s }
     };
 
-    Ok((
-        program.to_string(),
-        path_str,
-        extra_args,
-    ))
+    // PowerShell's -File parameter breaks on paths containing spaces (e.g. a user
+    // home dir or an install path like "Dev_Setup"). Use -Command with the call
+    // operator & instead — single-quoting the path handles spaces and all other
+    // special characters. The extra_args from the match above are discarded for
+    // PowerShell; all flags are rebuilt here.
+    let (final_args, final_path) = if program == "powershell" {
+        let escaped = path_str.replace('\'', "''");
+        (
+            vec![
+                "-NonInteractive".to_string(),
+                "-NoProfile".to_string(),
+                "-ExecutionPolicy".to_string(),
+                "Bypass".to_string(),
+                "-Command".to_string(),
+                format!("& '{}'", escaped),
+            ],
+            String::new(),
+        )
+    } else {
+        (extra_args, path_str)
+    };
+
+    Ok((program.to_string(), final_path, final_args))
 }
 
 fn build_env(config: &UserConfig) -> Vec<(String, String)> {
@@ -498,6 +521,9 @@ fn build_env(config: &UserConfig) -> Vec<(String, String)> {
     }
     if let Some(ref install_dir) = config.wsl_install_dir {
         env.push(("SETUP_WSL_INSTALL_DIR".to_string(), install_dir.clone()));
+    }
+    if let Some(ref openvpn_path) = config.openvpn_config_path {
+        env.push(("SETUP_OPENVPN_CONFIG_PATH".to_string(), openvpn_path.clone()));
     }
     env
 }
