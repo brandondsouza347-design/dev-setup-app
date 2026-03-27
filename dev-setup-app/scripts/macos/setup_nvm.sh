@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# setup_nvm.sh — Install NVM, Node 16.20.2, and Gulp
+# setup_nvm.sh — Install NVM, Node 22.10.0, and Gulp
 set -euo pipefail
 
-NODE_VERSION="${SETUP_NODE_VERSION:-16.20.2}"
-NVM_VERSION="0.39.7"
+NODE_VERSION="${SETUP_NODE_VERSION:-22.10.0}"
+NVM_VERSION="0.40.1"
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
 

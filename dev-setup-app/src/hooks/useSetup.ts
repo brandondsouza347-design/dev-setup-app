@@ -51,9 +51,9 @@ export function useSetup(): UseSetupReturn {
     wsl_tar_path: null,
     wsl_install_dir: null,
     postgres_password: 'postgres',
-    postgres_db_name: 'dev_db',
+    postgres_db_name: 'toogo_pos',
     python_version: '3.9.21',
-    node_version: '16.20.2',
+    node_version: '22.10.0',
     venv_name: 'erc',
     skip_already_installed: true,
   });

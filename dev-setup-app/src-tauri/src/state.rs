@@ -59,9 +59,9 @@ impl Default for UserConfig {
             wsl_tar_path: None,
             wsl_install_dir: None,
             postgres_password: "postgres".to_string(),
-            postgres_db_name: "dev_db".to_string(),
+            postgres_db_name: "toogo_pos".to_string(),
             python_version: "3.9.21".to_string(),
-            node_version: "16.20.2".to_string(),
+            node_version: "22.10.0".to_string(),
             venv_name: "erc".to_string(),
             skip_already_installed: true,
         }

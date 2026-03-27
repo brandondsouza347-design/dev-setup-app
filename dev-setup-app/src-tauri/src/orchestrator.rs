@@ -181,6 +181,24 @@ fn all_steps() -> Vec<SetupStep> {
             required: true,
             estimated_minutes: 5,
         },
+        SetupStep {
+            id: "pyenv_wsl".to_string(),
+            title: "Install pyenv + Python 3.9.21 (WSL)".to_string(),
+            description: "Install pyenv via the official curl installer inside WSL Ubuntu, install Python 3.9.21, and create the 'erc' virtual environment. Skipped automatically if already set up.".to_string(),
+            platform: Platform::Windows,
+            category: StepCategory::Python,
+            required: false,
+            estimated_minutes: 10,
+        },
+        SetupStep {
+            id: "nvm_wsl".to_string(),
+            title: "Install NVM v0.40.1 + Node 22.10.0 (WSL)".to_string(),
+            description: "Install NVM v0.40.1 and Node.js v22.10.0 inside WSL Ubuntu and set it as the default version. Skipped automatically if already set up.".to_string(),
+            platform: Platform::Windows,
+            category: StepCategory::Node,
+            required: false,
+            estimated_minutes: 5,
+        },
     ]
 }
 
@@ -313,8 +331,9 @@ fn build_script_command(
         "import_wsl_tar"=> ("windows", "import_wsl_tar.ps1",      "powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),
         "wsl_network"   => ("windows", "setup_wsl_network.ps1",   "powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),
         "vscode_windows"=> ("windows", "setup_vscode_windows.ps1","powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),
-        "git_ssh_windows"=>("windows","setup_git_ssh.ps1",        "powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),
-        _ => return Err(format!("Unknown step id: {}", step.id)),
+        "git_ssh_windows"=>("windows","setup_git_ssh.ps1",        "powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),        // Windows — WSL-side bash scripts (invoked via wsl bash)
+        "pyenv_wsl"       => ("windows", "setup_pyenv_wsl.sh",         "wsl",        vec!["bash".to_string()]),
+        "nvm_wsl"         => ("windows", "setup_nvm_wsl.sh",           "wsl",        vec!["bash".to_string()]),        _ => return Err(format!("Unknown step id: {}", step.id)),
     };
 
     let path = script_path(app_handle, &format!("{}/{}", script_subdir, script_name))
