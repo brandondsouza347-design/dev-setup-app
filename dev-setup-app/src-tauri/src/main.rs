@@ -25,6 +25,7 @@ fn main() {
             commands::detect_os,
             commands::get_setup_steps,
             commands::start_setup,
+            commands::resume_setup,
             commands::run_step,
             commands::retry_step,
             commands::skip_step,

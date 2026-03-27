@@ -41,6 +41,7 @@ interface UseSetupReturn {
   saveConfig: (cfg: UserConfig) => Promise<void>;
   updateConfig: (cfg: UserConfig) => void;
   startSetup: () => Promise<void>;
+  resumeSetup: () => Promise<void>;
   retryStep: (id: string) => Promise<void>;
   skipStep: (id: string) => Promise<void>;
   resetSetup: () => Promise<void>;
@@ -271,6 +272,17 @@ export function useSetup(): UseSetupReturn {
     }
   }, []);
 
+  const resumeSetup = useCallback(async () => {
+    setIsRunning(true);
+    try {
+      await invoke('resume_setup');
+    } catch (e) {
+      console.error('Resume error:', e);
+    } finally {
+      setIsRunning(false);
+    }
+  }, []);
+
   const skipStep = useCallback(async (id: string) => {
     await invoke('skip_step', { stepId: id });
     setStepResults((prev) => ({
@@ -346,6 +358,7 @@ export function useSetup(): UseSetupReturn {
     saveConfig,
     updateConfig,
     startSetup,
+    resumeSetup,
     retryStep,
     skipStep,
     resetSetup,

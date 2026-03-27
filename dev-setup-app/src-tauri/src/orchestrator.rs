@@ -441,6 +441,35 @@ pub async fn execute_script(
     }
 }
 
+/// Like execute_script but retries once after 2 seconds on failure.
+/// Handles transient exit-1 failures caused by Windows Defender scanning newly
+/// extracted scripts on first run from AppData — the retry always succeeds once
+/// the scan cache is warm.
+pub async fn execute_script_with_retry(
+    window: WebviewWindow,
+    app_handle: tauri::AppHandle,
+    step: &SetupStep,
+    config: &UserConfig,
+) -> Result<Vec<String>, String> {
+    match execute_script(window.clone(), app_handle.clone(), step, config).await {
+        Ok(logs) => Ok(logs),
+        Err(err) => {
+            log::warn!(
+                "execute_script_with_retry: step '{}' failed on attempt 1 ({}) — retrying in 2s",
+                step.id, err
+            );
+            emit_log(
+                &window,
+                &step.id,
+                "⚠ Transient failure — retrying once after 2s (common on first run)...",
+                LogLevel::Warn,
+            );
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            execute_script(window, app_handle, step, config).await
+        }
+    }
+}
+
 fn build_script_command(
     step: &SetupStep,
     _config: &UserConfig,

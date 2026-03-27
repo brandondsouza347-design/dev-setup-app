@@ -10,10 +10,22 @@
 ## Correct workflow
 
 1. Make code changes
-2. Run `git add <files>` to stage
-3. Print the suggested commit message
-4. Say: "Please run the following to commit and push:" and show the exact commands
-5. Do NOT execute the commit or push yourself
+2. **Bump the version** in all three files (see Versioning section below)
+3. Run `git add <files>` to stage
+4. Print the suggested commit message
+5. Say: "Please run the following to commit and push:" and show the exact commands
+6. Do NOT execute the commit or push yourself
+
+## MANDATORY end-of-task checklist
+
+**After completing ANY implementation task — no exceptions — always do ALL of the following before ending your response:**
+
+- [ ] Bump the version in `package.json`, `Cargo.toml`, and `tauri.conf.json`
+- [ ] Run `cargo check` to verify Rust compiles
+- [ ] Print a suggested commit message in a code block
+
+Do NOT skip these steps even if the user did not explicitly ask for them.
+Do NOT wait for the user to ask "increment the version" or "give me a commit message" — do it automatically every time.
 
 ## Versioning — bump on every meaningful change
 

@@ -16,6 +16,7 @@ interface Props {
   setupComplete: boolean;
   onRetry: (id: string) => Promise<void>;
   onSkip: (id: string) => Promise<void>;
+  onContinue: () => Promise<void>;
   onOpenTerminal: () => void;
   onGoTo: (page: WizardPage) => void;
 }
@@ -32,6 +33,7 @@ export const ProgressDashboard: React.FC<Props> = ({
   setupComplete,
   onRetry,
   onSkip,
+  onContinue,
   onOpenTerminal,
   onGoTo,
 }) => {
@@ -80,6 +82,9 @@ export const ProgressDashboard: React.FC<Props> = ({
   const doneCount = Object.values(stepResults).filter((r) => r.status === 'done').length;
   const failedCount = Object.values(stepResults).filter((r) => r.status === 'failed').length;
   const progress = steps.length > 0 ? (doneCount / steps.length) * 100 : 0;
+  // Show "Continue Setup" when: not running, not complete, at least one step done,
+  // and no currently failed steps — i.e. a retry just succeeded mid-sequence.
+  const showContinue = !isRunning && !setupComplete && doneCount > 0 && failedCount === 0;
 
   return (
     <div className="flex flex-col h-full">
@@ -281,6 +286,14 @@ export const ProgressDashboard: React.FC<Props> = ({
             className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition-colors"
           >
             View Summary →
+          </button>
+        )}
+        {showContinue && (
+          <button
+            onClick={onContinue}
+            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors"
+          >
+            Continue Setup →
           </button>
         )}
       </div>

@@ -1,5 +1,5 @@
 // commands.rs — Tauri command handlers exposed to the React frontend
-use crate::orchestrator::{execute_script, find_step_by_id, get_revert_steps_for_os, get_steps_for_os, SetupStep};
+use crate::orchestrator::{execute_script_with_retry, find_step_by_id, get_revert_steps_for_os, get_steps_for_os, SetupStep};
 use crate::state::{AppState, StepStatus, UserConfig};
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
@@ -121,7 +121,7 @@ pub async fn start_setup(
         let _ = window.emit("step_status", serde_json::json!({ "id": step.id, "status": "running" }));
 
         let start = std::time::Instant::now();
-        let result = execute_script(window.clone(), app_handle.clone(), step, &config).await;
+        let result = execute_script_with_retry(window.clone(), app_handle.clone(), step, &config).await;
         let duration = start.elapsed().as_secs();
 
         {
@@ -160,6 +160,31 @@ pub async fn start_setup(
     Ok(())
 }
 
+/// Resumes setup from the first non-done, non-skipped step.
+/// Used after a retry succeeds mid-sequence so the user can continue without
+/// restarting the entire sequence from scratch. Completed steps are skipped.
+#[tauri::command]
+pub async fn resume_setup(
+    window: WebviewWindow,
+    app_handle: AppHandle,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<(), String> {
+    log::info!("resume_setup: resuming from first pending/failed step");
+    // Reset setup_complete so start_setup runs to the end again.
+    {
+        let mut s = state.lock().unwrap();
+        s.setup_complete = false;
+        // Reset any failed steps back to pending so start_setup will pick them up.
+        for ss in s.step_states.values_mut() {
+            if ss.status == StepStatus::Failed {
+                ss.status = StepStatus::Pending;
+                ss.error = None;
+            }
+        }
+    }
+    start_setup(window, app_handle, state).await
+}
+
 /// Runs a single step by its ID (useful for retry or running individually).
 #[tauri::command]
 pub async fn run_step(
@@ -187,7 +212,7 @@ pub async fn run_step(
     let _ = window.emit("step_status", serde_json::json!({ "id": step_id, "status": "running" }));
 
     let start = std::time::Instant::now();
-    let result = execute_script(window.clone(), app_handle.clone(), &step, &config).await;
+    let result = execute_script_with_retry(window.clone(), app_handle.clone(), &step, &config).await;
     let duration = start.elapsed().as_secs();
 
     let mut s = state.lock().unwrap();
@@ -239,7 +264,7 @@ pub async fn start_revert(
         let _ = window.emit("step_status", serde_json::json!({ "id": step.id, "status": "running" }));
 
         let start = std::time::Instant::now();
-        let result = execute_script(window.clone(), app_handle.clone(), step, &config).await;
+        let result = execute_script_with_retry(window.clone(), app_handle.clone(), step, &config).await;
         let duration = start.elapsed().as_secs();
 
         match result {

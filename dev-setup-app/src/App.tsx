@@ -85,6 +85,7 @@ function App() {
             setupComplete={setup.setupComplete}
             onRetry={setup.retryStep}
             onSkip={setup.skipStep}
+            onContinue={setup.resumeSetup}
             onOpenTerminal={setup.openTerminal}
             onGoTo={setup.setPage}
           />
