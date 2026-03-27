@@ -51,6 +51,7 @@ pub struct UserConfig {
     pub node_version: String,
     pub venv_name: String,
     pub skip_already_installed: bool,
+    pub openvpn_config_path: Option<String>,
 }
 
 impl Default for UserConfig {
@@ -64,6 +65,7 @@ impl Default for UserConfig {
             node_version: "22.10.0".to_string(),
             venv_name: "erc".to_string(),
             skip_already_installed: true,
+            openvpn_config_path: None,
         }
     }
 }

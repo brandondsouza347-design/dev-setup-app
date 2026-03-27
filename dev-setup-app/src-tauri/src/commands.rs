@@ -42,6 +42,7 @@ pub struct ConfigInput {
     pub node_version: String,
     pub venv_name: String,
     pub skip_already_installed: bool,
+    pub openvpn_config_path: Option<String>,
 }
 
 /// Detects the current operating system.
@@ -531,6 +532,7 @@ pub fn save_config(
         node_version: input.node_version,
         venv_name: input.venv_name,
         skip_already_installed: input.skip_already_installed,
+        openvpn_config_path: input.openvpn_config_path,
     };
     Ok(())
 }

@@ -2,7 +2,7 @@
 # Run as normal user
 
 $ErrorActionPreference = "Stop"
-$DistroName = "Ubuntu-22.04"
+$DistroName = "ERC"
 
 Write-Host "==> Git & SSH Configuration" -ForegroundColor Cyan
 

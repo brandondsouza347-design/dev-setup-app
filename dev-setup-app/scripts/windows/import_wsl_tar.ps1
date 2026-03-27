@@ -12,7 +12,7 @@ if (-not $TarPath) {
     $TarPath = Join-Path $env:USERPROFILE "erc_ubuntu.tar"
 }
 if (-not $InstallDir) {
-    $InstallDir = Join-Path $env:USERPROFILE "WSL\Ubuntu-22.04"
+    $InstallDir = Join-Path $env:USERPROFILE "WSL\ERC"
 }
 
 Write-Host "==> WSL ERC Ubuntu Import" -ForegroundColor Cyan

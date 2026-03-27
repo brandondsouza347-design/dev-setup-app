@@ -66,6 +66,7 @@ export function useSetup(): UseSetupReturn {
     node_version: '22.10.0',
     venv_name: 'erc',
     skip_already_installed: true,
+    openvpn_config_path: null,
   });
   const [prereqChecks, setPrereqChecks] = useState<PrereqCheck[]>([]);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);

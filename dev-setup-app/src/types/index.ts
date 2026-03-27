@@ -52,6 +52,7 @@ export interface UserConfig {
   node_version: string;
   venv_name: string;
   skip_already_installed: boolean;
+  openvpn_config_path: string | null;
 }
 
 export interface FullState {
