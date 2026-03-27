@@ -60,12 +60,13 @@ export const ProgressDashboard: React.FC<Props> = ({
     }
   }, [logs, logsOpen]);
 
-  // Flatten + sort all log entries across all steps by timestamp
-  const allLogs: (InternalLogEntry & { stepTitle: string })[] = steps
-    .flatMap((step) =>
+  // Flatten + sort all log entries across all steps (plus pre-flight checks) by timestamp
+  const allLogs: (InternalLogEntry & { stepTitle: string })[] = [
+    ...(logs['__prereq__'] ?? []).map((entry) => ({ ...entry, stepTitle: 'Pre-flight Checks' })),
+    ...steps.flatMap((step) =>
       (logs[step.id] ?? []).map((entry) => ({ ...entry, stepTitle: step.title }))
-    )
-    .sort((a, b) => (a.ts ?? 0) - (b.ts ?? 0));
+    ),
+  ].sort((a, b) => (a.ts ?? 0) - (b.ts ?? 0));
 
   const handleRetry = async (id: string) => {
     setRetrying(id);

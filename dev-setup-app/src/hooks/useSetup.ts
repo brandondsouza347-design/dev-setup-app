@@ -164,6 +164,18 @@ export function useSetup(): UseSetupReturn {
   const runPrereqCheck = useCallback(async () => {
     const checks = await invoke<PrereqCheck[]>('check_prerequisites');
     setPrereqChecks(checks);
+    // Also push results into logs so Live Logs panel shows them
+    const now = Date.now();
+    const entries: LogEntry[] = checks.map((c, i) => ({
+      stepId: '__prereq__',
+      line: `${c.passed ? '✓' : '✗'} ${c.name}: ${c.message}`,
+      level: c.passed ? 'success' : 'error',
+      ts: now + i,
+    }));
+    setLogs((prev) => ({
+      ...prev,
+      __prereq__: [...(prev['__prereq__'] ?? []), ...entries],
+    }));
   }, []);
 
   const saveConfig = useCallback(async (cfg: UserConfig) => {

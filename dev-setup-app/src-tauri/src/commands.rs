@@ -407,15 +407,15 @@ pub fn open_terminal() -> Result<(), String> {
                 .map_err(|e| e.to_string())?;
         }
         "windows" => {
-            std::process::Command::new("cmd")
-                .args(["/c", "start", "wt"])
-                .spawn()
-                .or_else(|_| {
-                    std::process::Command::new("cmd")
-                        .args(["/c", "start", "cmd"])
-                        .spawn()
-                })
-                .map_err(|e| e.to_string())?;
+            // Spawn directly so each failure is catchable (not via cmd /c start which swallows it)
+            let launched = std::process::Command::new("wt").spawn().is_ok()
+                || std::process::Command::new("powershell").spawn().is_ok()
+                || std::process::Command::new("cmd").spawn().is_ok();
+            if !launched {
+                log::error!("open_terminal: could not open any terminal (wt / powershell / cmd all failed)");
+                return Err("Could not open a terminal".to_string());
+            }
+            log::info!("open_terminal: terminal launched");
         }
         _ => {}
     }
