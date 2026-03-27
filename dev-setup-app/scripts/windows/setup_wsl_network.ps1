@@ -9,12 +9,24 @@ Write-Host "==> WSL Network Configuration" -ForegroundColor Cyan
 # ─── 1. Check WSL distro is available ───────────────────────────────────────
 
 Write-Host "`n==> Step 1: Checking WSL distro..."
-$existingDistros = (wsl --list --quiet 2>$null) -replace '\0','' | Where-Object { $_ -match $DistroName }
+# Spin until the distro appears — wsl --import in the previous step may
+# still be committing to the registry. Exit the loop the moment it is found.
+$timeoutSecs = 60
+$elapsed = 0
+$existingDistros = $null
+while ($elapsed -lt $timeoutSecs) {
+    $existingDistros = (wsl --list --quiet 2>`$null) -replace '\0','' | Where-Object { `$_ -match $DistroName }
+    if ($existingDistros) { break }
+    if ($elapsed -eq 0) { Write-Host "   $DistroName not yet visible, waiting..." -ForegroundColor Yellow }
+    Start-Sleep -Seconds 1
+    $elapsed++
+    if ($elapsed % 5 -eq 0) { Write-Host "   Still waiting... (${elapsed}s)" }
+}
 if (-not $existingDistros) {
     Write-Host "ERROR: $DistroName is not installed. Run 'Import WSL TAR' step first." -ForegroundColor Red
     exit 1
 }
-Write-Host "✓ $DistroName is available"
+Write-Host "✓ $DistroName is available (found after ${elapsed}s)"
 
 # ─── 2. Disable WSL auto-generating resolv.conf ──────────────────────────────
 

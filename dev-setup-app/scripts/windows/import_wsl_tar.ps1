@@ -91,6 +91,28 @@ if ($bootResult -match "WSL is running") {
     Write-Host "⚠ Could not verify boot. Try: wsl -d $DistroName" -ForegroundColor Yellow
 }
 
+# ─── Wait until distro appears in WSL registry ───────────────────────────────
+# wsl --import returns before the distro is fully committed to the registry.
+# Spin until it shows up — no fixed sleep, exit as soon as it is confirmed.
+Write-Host "`n==> Waiting until $DistroName is registered in WSL..."
+$timeoutSecs = 120
+$elapsed = 0
+$found = $false
+while ($elapsed -lt $timeoutSecs) {
+    $check = (wsl --list --quiet 2>`$null) -replace '\0','' | Where-Object { `$_ -match $DistroName }
+    if ($check) { $found = $true; break }
+    Start-Sleep -Seconds 1
+    $elapsed++
+    if ($elapsed % 5 -eq 0) {
+        Write-Host "   Still waiting... (${elapsed}s)"
+    }
+}
+if ($found) {
+    Write-Host "✓ $DistroName confirmed in WSL registry after ${elapsed}s"
+} else {
+    Write-Host "⚠ $DistroName not visible after ${timeoutSecs}s — the next step will re-check." -ForegroundColor Yellow
+}
+
 # ─── 8. Verify ──────────────────────────────────────────────────────────────
 
 Write-Host "`n==> WSL Distros registered:"
