@@ -10,6 +10,11 @@ use std::sync::Mutex;
 
 fn main() {
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(log::LevelFilter::Info)
+                .build(),
+        )
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_os::init())
@@ -31,6 +36,11 @@ fn main() {
             commands::save_config,
         ])
         .setup(|_app| {
+            log::info!(
+                "dev-setup-app starting — OS={} ARCH={}",
+                std::env::consts::OS,
+                std::env::consts::ARCH
+            );
             #[cfg(debug_assertions)]
             {
                 use tauri::Manager;

@@ -191,7 +191,13 @@ fn script_path(app_handle: &tauri::AppHandle, script_name: &str) -> Result<std::
         .path()
         .resource_dir()
         .map_err(|e| e.to_string())?;
-    Ok(resource_dir.join("scripts").join(script_name))
+    let path = resource_dir.join("scripts").join(script_name);
+    log::info!("script_path: resolved '{}' —> {}", script_name, path.display());
+    let exists = path.exists();
+    if !exists {
+        log::error!("script_path: file does NOT exist at resolved path: {}", path.display());
+    }
+    Ok(path)
 }
 
 /// Execute a shell script and stream output line-by-line to the frontend via events.
@@ -205,6 +211,11 @@ pub async fn execute_script(
 
     let (program, script_file, args) = build_script_command(step, config, &app_handle)?;
 
+    log::info!(
+        "execute_script: step='{}' program='{}' script='{}' args={:?}",
+        step.id, program, script_file, args
+    );
+
     emit_log(&window, &step.id, &format!("▶ Starting: {}", step.title), LogLevel::Info);
 
     let mut child = tokio::process::Command::new(&program)
@@ -214,7 +225,10 @@ pub async fn execute_script(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| format!("Failed to spawn process: {}", e))?;
+        .map_err(|e| {
+            log::error!("execute_script: failed to spawn '{}' for step '{}' — {}", program, step.id, e);
+            format!("Failed to spawn process: {}", e)
+        })?;
 
     let stdout = child.stdout.take().unwrap();
     let stderr = child.stderr.take().unwrap();
@@ -247,10 +261,12 @@ pub async fn execute_script(
     while let Some((line, is_stderr)) = rx.recv().await {
         if is_stderr {
             if !line.trim().is_empty() {
+                log::warn!("[{}][stderr] {}", step.id, line);
                 all_logs.push(format!("[stderr] {}", line));
                 emit_log(&window, &step.id, &line, LogLevel::Warn);
             }
         } else {
+            log::info!("[{}] {}", step.id, line);
             all_logs.push(line.clone());
             emit_log(&window, &step.id, &line, classify_log_line(&line));
         }
@@ -258,9 +274,9 @@ pub async fn execute_script(
 
     let status = child.wait().await.map_err(|e| format!("Process wait error: {}", e))?;
 
-    let duration = start.elapsed().as_secs();
-
     if status.success() {
+        let duration = start.elapsed().as_secs();
+        log::info!("execute_script: step '{}' exited successfully (exit=0) in {}s", step.id, duration);
         emit_log(
             &window,
             &step.id,
@@ -269,10 +285,10 @@ pub async fn execute_script(
         );
         Ok(all_logs)
     } else {
-        let msg = format!(
-            "Script exited with code {}",
-            status.code().unwrap_or(-1)
-        );
+        let code = status.code().unwrap_or(-1);
+        let duration = start.elapsed().as_secs();
+        let msg = format!("Script exited with code {}", code);
+        log::error!("execute_script: step '{}' FAILED — exit code={} duration={}s", step.id, code, duration);
         emit_log(&window, &step.id, &msg, LogLevel::Error);
         Err(msg)
     }

@@ -52,7 +52,7 @@ pub fn detect_os() -> OsInfo {
 
     let is_apple_silicon = os == "macos" && arch == "aarch64";
 
-    OsInfo {
+    let info = OsInfo {
         os: match os {
             "macos" => "macos",
             "windows" => "windows",
@@ -62,7 +62,9 @@ pub fn detect_os() -> OsInfo {
         arch: arch.to_string(),
         version: os_version(),
         is_apple_silicon,
-    }
+    };
+    log::info!("detect_os: os={} arch={} version={} apple_silicon={}", info.os, info.arch, info.version, info.is_apple_silicon);
+    info
 }
 
 /// Returns the ordered list of setup steps for the detected OS.
@@ -84,6 +86,7 @@ pub async fn start_setup(
         s.current_step_index = 0;
         let os = detect_os();
         let steps = get_steps_for_os(&os.os);
+        log::info!("start_setup: beginning full setup for os={} — {} steps queued", os.os, steps.len());
         for step in &steps {
             s.get_or_create_step(&step.id);
         }
@@ -107,6 +110,7 @@ pub async fn start_setup(
             let ss = s.get_or_create_step(&step.id);
             ss.status = StepStatus::Running;
         }
+        log::info!("start_setup: running step [{}/{}] id={} title='{}'", idx + 1, steps.len(), step.id, step.title);
         let _ = window.emit("step_status", serde_json::json!({ "id": step.id, "status": "running" }));
 
         let start = std::time::Instant::now();
@@ -119,11 +123,13 @@ pub async fn start_setup(
             ss.duration_secs = Some(duration);
             match result {
                 Ok(logs) => {
+                    log::info!("start_setup: step '{}' completed successfully in {}s ({} log lines)", step.id, duration, logs.len());
                     ss.status = StepStatus::Done;
                     ss.logs = logs;
                     ss.error = None;
                 }
                 Err(err) => {
+                    log::error!("start_setup: step '{}' FAILED after {}s — {}", step.id, duration, err);
                     ss.status = StepStatus::Failed;
                     ss.error = Some(err.clone());
                     let _ = window.emit(
@@ -155,12 +161,13 @@ pub async fn run_step(
     app_handle: AppHandle,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<(), String> {
+    log::info!("run_step: requested step_id={}", step_id);
     let (step, config) = {
         let s = state.lock().unwrap();
         let os = detect_os();
         let steps = get_steps_for_os(&os.os);
         let step = steps.into_iter().find(|s| s.id == step_id)
-            .ok_or_else(|| format!("Unknown step: {}", step_id))?;
+            .ok_or_else(|| { log::error!("run_step: unknown step_id={}", step_id); format!("Unknown step: {}", step_id) })?;
         (step, s.config.clone())
     };
 
@@ -183,6 +190,7 @@ pub async fn run_step(
 
     match result {
         Ok(logs) => {
+            log::info!("run_step: step '{}' done in {}s ({} log lines)", step_id, duration, logs.len());
             ss.status = StepStatus::Done;
             ss.logs = logs;
             ss.error = None;
@@ -190,6 +198,7 @@ pub async fn run_step(
             Ok(())
         }
         Err(err) => {
+            log::error!("run_step: step '{}' FAILED after {}s — {}", step_id, duration, err);
             ss.status = StepStatus::Failed;
             ss.error = Some(err.clone());
             let _ = window.emit(
@@ -209,13 +218,15 @@ pub async fn retry_step(
     app_handle: AppHandle,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<(), String> {
-    {
+    let retry_count = {
         let mut s = state.lock().unwrap();
         let ss = s.get_or_create_step(&step_id);
         ss.retry_count += 1;
         ss.status = StepStatus::Pending;
         ss.error = None;
-    }
+        ss.retry_count
+    };
+    log::warn!("retry_step: retrying step_id={} (attempt #{})", step_id, retry_count);
     run_step(step_id, window, app_handle, state).await
 }
 
@@ -283,9 +294,12 @@ pub fn reset_state(state: State<'_, Mutex<AppState>>) -> Result<(), String> {
 pub async fn check_prerequisites() -> Vec<PrereqCheck> {
     let mut checks: Vec<PrereqCheck> = Vec::new();
     let os = detect_os();
+    log::info!("check_prerequisites: starting pre-flight checks for os={}", os.os);
 
     // Disk space: require >= 10 GB free on home dir
-    checks.push(check_disk_space());
+    let disk = check_disk_space();
+    log::info!("check_prerequisites: [{}] {} — {}", if disk.passed { "PASS" } else { "FAIL" }, disk.name, disk.message);
+    checks.push(disk);
 
     // OS-specific checks
     if os.os == "macos" {
@@ -296,6 +310,13 @@ pub async fn check_prerequisites() -> Vec<PrereqCheck> {
         checks.push(check_command_available("wsl", "WSL"));
         checks.push(check_command_available("winget", "winget"));
         checks.push(check_command_available("powershell", "PowerShell"));
+    }
+
+    let failed: Vec<_> = checks.iter().filter(|c| !c.passed).map(|c| c.name.as_str()).collect();
+    if failed.is_empty() {
+        log::info!("check_prerequisites: all checks passed");
+    } else {
+        log::warn!("check_prerequisites: {} check(s) failed — {:?}", failed.len(), failed);
     }
 
     checks
@@ -309,7 +330,19 @@ pub struct PrereqCheck {
 }
 
 fn check_command_available(cmd: &str, label: &str) -> PrereqCheck {
-    let available = which::which(cmd).is_ok() || check_fallback_path(cmd);
+    let via_which = which::which(cmd);
+    let found_by_which = via_which.is_ok();
+    let found_by_fallback = !found_by_which && check_fallback_path(cmd);
+    let available = found_by_which || found_by_fallback;
+
+    if found_by_which {
+        log::info!("check_command_available: [PASS] '{}' found via PATH — {:?}", cmd, which::which(cmd).unwrap());
+    } else if found_by_fallback {
+        log::info!("check_command_available: [PASS] '{}' not in PATH but found at absolute fallback location", cmd);
+    } else {
+        log::warn!("check_command_available: [FAIL] '{}' ({}) not found in PATH or fallback locations", cmd, label);
+    }
+
     PrereqCheck {
         name: label.to_string(),
         passed: available,
@@ -337,7 +370,14 @@ fn check_fallback_path(cmd: &str) -> bool {
             ],
             _ => &[],
         };
-        return fallbacks.iter().any(|p| std::path::Path::new(p).exists());
+        for path in fallbacks {
+            let exists = std::path::Path::new(path).exists();
+            log::info!("check_fallback_path: '{}' — checking {} — exists={}", cmd, path, exists);
+            if exists {
+                return true;
+            }
+        }
+        return false;
     }
     #[allow(unreachable_code)]
     false
