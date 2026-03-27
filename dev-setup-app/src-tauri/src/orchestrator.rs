@@ -327,10 +327,16 @@ fn script_path(app_handle: &tauri::AppHandle, script_name: &str) -> Result<std::
         .resource_dir()
         .map_err(|e| e.to_string())?;
     let path = resource_dir.join("scripts").join(script_name);
-    log::info!("script_path: resolved '{}' —> {}", script_name, path.display());
-    let exists = path.exists();
-    if !exists {
-        log::error!("script_path: file does NOT exist at resolved path: {}", path.display());
+    log::info!("script_path: resource_dir='{}' resolved='{}'", resource_dir.display(), path.display());
+    if !path.exists() {
+        let msg = format!(
+            "Script not found: {}\n\nLooked in resource dir: {}\nExpected at: {}\n\nThis usually means the app was not rebuilt after the last change, or the installer did not bundle the scripts correctly. Please rebuild and reinstall.",
+            script_name,
+            resource_dir.display(),
+            path.display()
+        );
+        log::error!("{}", msg);
+        return Err(msg);
     }
     Ok(path)
 }
