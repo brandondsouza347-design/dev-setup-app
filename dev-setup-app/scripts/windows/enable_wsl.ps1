@@ -7,6 +7,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$rebootRequired = $false
 
 Write-Host "==> WSL2 Enablement Setup" -ForegroundColor Cyan
 
@@ -31,6 +32,7 @@ if ($wslFeature.State -eq "Enabled") {
 } else {
     Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Windows-Subsystem-Linux -NoRestart
     Write-Host "✓ WSL feature enabled"
+    $rebootRequired = $true
 }
 
 # ─── 3. Enable Virtual Machine Platform ────────────────────────────────────
@@ -42,6 +44,7 @@ if ($vmFeature.State -eq "Enabled") {
 } else {
     Enable-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform -NoRestart
     Write-Host "✓ Virtual Machine Platform enabled"
+    $rebootRequired = $true
 }
 
 # ─── 4. Set WSL2 as default ─────────────────────────────────────────────────
@@ -69,16 +72,12 @@ try {
 Write-Host "`n==> WSL Status:"
 wsl --status 2>$null
 
-Write-Host "`n✓ WSL2 features enabled!" -ForegroundColor Green
-Write-Host ""
-Write-Host "NOTE: A system restart is required to complete the WSL2 installation." -ForegroundColor Yellow
-Write-Host "      After reboot, re-run this installer to continue with the remaining steps." -ForegroundColor Yellow
-
-if (-not $NoReboot) {
-    $rebootChoice = Read-Host "`nRestart now? (y/n)"
-    if ($rebootChoice -eq 'y' -or $rebootChoice -eq 'Y') {
-        Write-Host "Restarting in 10 seconds..."
-        Start-Sleep -Seconds 10
-        Restart-Computer -Force
-    }
+if ($rebootRequired) {
+    Write-Host "`n⚠  RESTART REQUIRED" -ForegroundColor Yellow
+    Write-Host "   WSL2 features were just enabled and require a system restart to take effect." -ForegroundColor Yellow
+    Write-Host "   Please save your work, restart your PC, then re-run this installer." -ForegroundColor Yellow
+    Write-Host "   This step will be detected as already complete on the next run." -ForegroundColor Yellow
+    exit 1
+} else {
+    Write-Host "`n✓ WSL2 features already enabled — no restart needed" -ForegroundColor Green
 }

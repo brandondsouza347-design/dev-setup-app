@@ -307,6 +307,7 @@ pub async fn check_prerequisites() -> Vec<PrereqCheck> {
         checks.push(check_command_available("curl", "curl"));
         checks.push(check_command_available("bash", "bash"));
     } else if os.os == "windows" {
+        checks.push(check_admin_rights());
         checks.push(check_command_available("wsl", "WSL"));
         checks.push(check_command_available("winget", "winget"));
         checks.push(check_command_available("powershell", "PowerShell"));
@@ -392,6 +393,41 @@ fn check_disk_space() -> PrereqCheck {
         message: home
             .map(|p| format!("Home directory: {}", p.display()))
             .unwrap_or_else(|| "Could not determine home directory".to_string()),
+    }
+}
+
+#[allow(unused_variables, dead_code)]
+fn check_admin_rights() -> PrereqCheck {
+    #[cfg(target_os = "windows")]
+    {
+        let is_admin = std::process::Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "[Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)",
+            ])
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .map(|s| s.trim().eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+        log::info!("check_admin_rights: is_admin={}", is_admin);
+        return PrereqCheck {
+            name: "Administrator Rights".to_string(),
+            passed: is_admin,
+            message: if is_admin {
+                "Running as Administrator".to_string()
+            } else {
+                "Not running as Administrator \u{2014} WSL enablement requires admin. Right-click the app and select 'Run as administrator'.".to_string()
+            },
+        };
+    }
+    #[allow(unreachable_code)]
+    PrereqCheck {
+        name: "Administrator Rights".to_string(),
+        passed: true,
+        message: "Not applicable on this platform".to_string(),
     }
 }
 

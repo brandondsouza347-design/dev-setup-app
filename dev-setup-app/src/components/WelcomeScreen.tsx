@@ -35,7 +35,7 @@ export const WelcomeScreen: React.FC<Props> = ({ osInfo, onNext }) => {
       ]
     : [
         '🐧 WSL2 feature enablement',
-        '📦 Ubuntu 22.04 import from TAR',
+        '📦 ERC Ubuntu import from TAR (Ubuntu 24.04 LTS)',
         '🌐 WSL network & DNS configuration',
         '🔧 .wslconfig mirrored networking (skipped if present)',
         '🧹 WSL cleanup & set ERC as default distro (skipped if clean)',

@@ -101,7 +101,7 @@ fn all_steps() -> Vec<SetupStep> {
         },
         SetupStep {
             id: "nvm".to_string(),
-            title: "Install NVM + Node 16.20.2".to_string(),
+            title: "Install NVM + Node 22.10.0".to_string(),
             description: "Install NVM (Node Version Manager) and Node.js 16.20.2 with Gulp.".to_string(),
             platform: Platform::MacOs,
             category: StepCategory::Node,
@@ -148,7 +148,7 @@ fn all_steps() -> Vec<SetupStep> {
         SetupStep {
             id: "import_wsl_tar".to_string(),
             title: "Import Ubuntu 22.04 from TAR".to_string(),
-            description: "Import the pre-configured Ubuntu 22.04 TAR image into WSL2.".to_string(),
+            description: "Import the pre-configured ERC Ubuntu TAR image into WSL2.".to_string(),
             platform: Platform::Windows,
             category: StepCategory::Wsl,
             required: true,
@@ -385,12 +385,12 @@ fn build_script_command(
         "import_wsl_tar"=> ("windows", "import_wsl_tar.ps1",      "powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),
         "wsl_network"   => ("windows", "setup_wsl_network.ps1",   "powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),
         "vscode_windows"=> ("windows", "setup_vscode_windows.ps1","powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),
-        "git_ssh_windows"=>("windows","setup_git_ssh.ps1",        "powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),        // Windows — WSL-side bash scripts (invoked via wsl bash)
-        "pyenv_wsl"       => ("windows", "setup_pyenv_wsl.sh",         "wsl",        vec!["bash".to_string()]),
-        "nvm_wsl"          => ("windows", "setup_nvm_wsl.sh",           "wsl",        vec!["bash".to_string()]),
-        "ubuntu_user_wsl"  => ("windows", "setup_ubuntu_user_wsl.sh",   "wsl",        vec!["bash".to_string()]),
-        "postgres_wsl"     => ("windows", "setup_postgres_wsl.sh",      "wsl",        vec!["bash".to_string()]),
-        "redis_wsl"        => ("windows", "setup_redis_wsl.sh",         "wsl",        vec!["bash".to_string()]),
+        "git_ssh_windows"=>("windows","setup_git_ssh.ps1",        "powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),        // Windows — WSL-side bash scripts (invoked via wsl -d ERC bash)
+        "pyenv_wsl"       => ("windows", "setup_pyenv_wsl.sh",         "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
+        "nvm_wsl"          => ("windows", "setup_nvm_wsl.sh",           "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
+        "ubuntu_user_wsl"  => ("windows", "setup_ubuntu_user_wsl.sh",   "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
+        "postgres_wsl"     => ("windows", "setup_postgres_wsl.sh",      "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
+        "redis_wsl"        => ("windows", "setup_redis_wsl.sh",         "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
         // Windows-side PowerShell scripts
         "wslconfig_networking" => ("windows", "setup_wslconfig_networking.ps1", "powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),
         "wsl_cleanup"          => ("windows", "setup_wsl_cleanup.ps1",          "powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),

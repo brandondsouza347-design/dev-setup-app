@@ -1,7 +1,6 @@
 # setup_wslconfig_networking.ps1
 # Create or update .wslconfig with networkingMode=mirrored
 # Skips if already configured
-#Requires -RunAsAdministrator
 $ErrorActionPreference = "Stop"
 
 $wslConfigPath = Join-Path $env:USERPROFILE ".wslconfig"

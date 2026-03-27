@@ -2,7 +2,7 @@
 #Requires -RunAsAdministrator
 
 $ErrorActionPreference = "Stop"
-$DistroName = "Ubuntu-22.04"
+$DistroName = "ERC"
 
 Write-Host "==> WSL Network Configuration" -ForegroundColor Cyan
 

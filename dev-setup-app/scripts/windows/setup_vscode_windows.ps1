@@ -2,7 +2,7 @@
 # Run as normal user (not Administrator)
 
 $ErrorActionPreference = "Stop"
-$DistroName = "Ubuntu-22.04"
+$DistroName = "ERC"
 
 Write-Host "==> VS Code Windows/WSL Configuration" -ForegroundColor Cyan
 
@@ -97,7 +97,7 @@ $SettingsFile = Join-Path $SettingsDir "settings.json"
 $NodeVersion   = if ($env:SETUP_NODE_VERSION)   { $env:SETUP_NODE_VERSION }   else { "16.20.2" }
 $PythonVersion = if ($env:SETUP_PYTHON_VERSION) { $env:SETUP_PYTHON_VERSION } else { "3.9.21" }
 $VenvName      = if ($env:SETUP_VENV_NAME)      { $env:SETUP_VENV_NAME }      else { "erc" }
-$WSLPythonPath = "/home/$DistroName/.pyenv/versions/$VenvName/bin/python"
+$WSLPythonPath = "/home/ubuntu/.pyenv/versions/$VenvName/bin/python"
 
 $Settings = @"
 {
@@ -108,7 +108,7 @@ $Settings = @"
     "editor.trimAutoWhitespace": true,
     "files.trimTrailingWhitespace": true,
     "files.insertFinalNewline": true,
-    "terminal.integrated.defaultProfile.windows": "Ubuntu-22.04 (WSL)",
+    "terminal.integrated.defaultProfile.windows": "ERC (WSL)",
     "python.defaultInterpreterPath": "$WSLPythonPath",
     "[python]": {
         "editor.defaultFormatter": "ms-python.black-formatter"

@@ -1,11 +1,11 @@
-# import_wsl_tar.ps1 — Import Ubuntu 22.04 from a TAR file into WSL2
-#Requires -RunAsAdministrator
+# import_wsl_tar.ps1 — Import ERC Ubuntu from a TAR file into WSL2
+# Run as normal user (not Administrator required)
 
 $ErrorActionPreference = "Stop"
 
 $TarPath     = $env:SETUP_WSL_TAR_PATH
 $InstallDir  = $env:SETUP_WSL_INSTALL_DIR
-$DistroName  = "Ubuntu-22.04"
+$DistroName  = "ERC"
 
 # Default paths if not provided via environment
 if (-not $TarPath) {
@@ -15,7 +15,7 @@ if (-not $InstallDir) {
     $InstallDir = Join-Path $env:USERPROFILE "WSL\Ubuntu-22.04"
 }
 
-Write-Host "==> WSL Ubuntu 22.04 Import" -ForegroundColor Cyan
+Write-Host "==> WSL ERC Ubuntu Import" -ForegroundColor Cyan
 Write-Host "    TAR file     : $TarPath"
 Write-Host "    Install dir  : $InstallDir"
 Write-Host "    Distro name  : $DistroName"
@@ -96,7 +96,7 @@ if ($bootResult -match "WSL is running") {
 Write-Host "`n==> WSL Distros registered:"
 wsl --list --verbose
 
-Write-Host "`n✓ Ubuntu 22.04 import complete!" -ForegroundColor Green
+Write-Host "`n✓ ERC Ubuntu import complete!" -ForegroundColor Green
 Write-Host ""
 Write-Host "  Access with   : wsl -d $DistroName"
 Write-Host "  Or just       : wsl  (it's the default)"
