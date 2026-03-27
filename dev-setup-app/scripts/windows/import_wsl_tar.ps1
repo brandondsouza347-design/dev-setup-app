@@ -64,15 +64,28 @@ Write-Host "    Target : $InstallDir"
 
 $importStart = Get-Date
 wsl --import $DistroName $InstallDir $TarPath --version 2
+$importExitCode = $LASTEXITCODE
 $importEnd = Get-Date
 $importDuration = [Math]::Round(($importEnd - $importStart).TotalMinutes, 1)
 
+if ($importExitCode -ne 0) {
+    Write-Host "ERROR: wsl --import failed with exit code $importExitCode" -ForegroundColor Red
+    Write-Host "   Possible causes:" -ForegroundColor Yellow
+    Write-Host "     - WSL2 kernel not installed (run: wsl --update)" -ForegroundColor Yellow
+    Write-Host "     - Virtualisation not enabled in BIOS/UEFI" -ForegroundColor Yellow
+    Write-Host "     - Insufficient disk space in $InstallDir" -ForegroundColor Yellow
+    Write-Host "     - TAR file is corrupt or not a valid WSL rootfs" -ForegroundColor Yellow
+    exit 1
+}
 Write-Host "✓ Import completed in $importDuration minutes"
 
 # ─── 5. Set WSL2 version ────────────────────────────────────────────────────
 
 Write-Host "`n==> Step 5: Ensuring distro runs on WSL2..."
 wsl --set-version $DistroName 2
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "WARNING: wsl --set-version returned $LASTEXITCODE — continuing anyway" -ForegroundColor Yellow
+}
 Write-Host "✓ $DistroName set to WSL2"
 
 # ─── 6. Set as default distribution ─────────────────────────────────────────
@@ -110,7 +123,10 @@ while ($elapsed -lt $timeoutSecs) {
 if ($found) {
     Write-Host "✓ $DistroName confirmed in WSL registry after ${elapsed}s"
 } else {
-    Write-Host "⚠ $DistroName not visible after ${timeoutSecs}s — the next step will re-check." -ForegroundColor Yellow
+    Write-Host "ERROR: $DistroName still not visible in WSL registry after ${timeoutSecs}s" -ForegroundColor Red
+    Write-Host "   The import command succeeded but WSL did not register the distro." -ForegroundColor Yellow
+    Write-Host "   Try running manually: wsl --list --verbose" -ForegroundColor Yellow
+    exit 1
 }
 
 # ─── 8. Verify ──────────────────────────────────────────────────────────────
