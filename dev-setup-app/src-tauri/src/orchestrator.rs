@@ -470,9 +470,16 @@ fn build_script_command(
     let path = script_path(app_handle, &format!("{}/{}", script_subdir, script_name))
         .map_err(|e| e)?;
 
+    // PowerShell's -File parameter does not accept the \\?\ extended-length
+    // path prefix that Rust's PathBuf emits on Windows — strip it if present.
+    let path_str = {
+        let s = path.to_string_lossy().to_string();
+        if s.starts_with(r"\\?\") { s[4..].to_string() } else { s }
+    };
+
     Ok((
         program.to_string(),
-        path.to_string_lossy().to_string(),
+        path_str,
         extra_args,
     ))
 }
