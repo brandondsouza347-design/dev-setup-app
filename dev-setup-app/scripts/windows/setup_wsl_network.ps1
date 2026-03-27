@@ -15,7 +15,7 @@ $timeoutSecs = 60
 $elapsed = 0
 $existingDistros = $null
 while ($elapsed -lt $timeoutSecs) {
-    $existingDistros = (wsl --list --quiet 2>`$null) -replace '\0','' | Where-Object { `$_ -match $DistroName }
+    $existingDistros = (wsl --list --quiet 2>$null) -replace '\0','' | Where-Object { $_ -match $DistroName }
     if ($existingDistros) { break }
     if ($elapsed -eq 0) { Write-Host "   $DistroName not yet visible, waiting..." -ForegroundColor Yellow }
     Start-Sleep -Seconds 1

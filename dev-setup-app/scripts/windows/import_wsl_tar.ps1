@@ -99,7 +99,7 @@ $timeoutSecs = 120
 $elapsed = 0
 $found = $false
 while ($elapsed -lt $timeoutSecs) {
-    $check = (wsl --list --quiet 2>`$null) -replace '\0','' | Where-Object { `$_ -match $DistroName }
+    $check = (wsl --list --quiet 2>$null) -replace '\0','' | Where-Object { $_ -match $DistroName }
     if ($check) { $found = $true; break }
     Start-Sleep -Seconds 1
     $elapsed++
