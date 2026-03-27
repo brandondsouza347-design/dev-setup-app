@@ -20,19 +20,55 @@ Write-Host "    TAR file     : $TarPath"
 Write-Host "    Install dir  : $InstallDir"
 Write-Host "    Distro name  : $DistroName"
 
+# ─── 0. WSL version / kernel check ─────────────────────────────────────────
+
+Write-Host "`n==> Step 0: WSL environment info..."
+try {
+    $wslVer = wsl --version 2>&1
+    Write-Host ($wslVer | Out-String).Trim()
+} catch {
+    Write-Host "   (wsl --version not available on this build)" -ForegroundColor Yellow
+}
+Write-Host "   WSL feature list:"
+wsl --list --verbose 2>&1 | ForEach-Object { Write-Host "   $_" }
+
 # ─── 1. Check TAR file ──────────────────────────────────────────────────────
 
 Write-Host "`n==> Step 1: Verifying TAR file..."
-if (-not (Test-Path $TarPath)) {
-    Write-Host "ERROR: TAR file not found at: $TarPath" -ForegroundColor Red
-    Write-Host ""
-    Write-Host "Please place the Ubuntu 22.04 TAR file at one of these locations:" -ForegroundColor Yellow
-    Write-Host "  - $($env:USERPROFILE)\erc_ubuntu.tar" -ForegroundColor Yellow
-    Write-Host "  - Or configure the path in the Settings screen." -ForegroundColor Yellow
+Write-Host "   Path to check : $TarPath"
+Write-Host "   Current user  : $($env:USERNAME)"
+Write-Host "   Process is elevated: $((New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))"
+
+$pathExists = $false
+try {
+    $pathExists = Test-Path -LiteralPath $TarPath -ErrorAction Stop
+    Write-Host "   Test-Path result: $pathExists"
+} catch {
+    Write-Host "ERROR: Test-Path threw an exception — $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "   This usually means the process cannot access the path (UAC elevation / permissions)." -ForegroundColor Yellow
+    Write-Host "   Try running the app as the same user who owns C:\Users\Brandon\, not as Administrator." -ForegroundColor Yellow
     exit 1
 }
 
-$TarSize = (Get-Item $TarPath).Length / 1GB
+if (-not $pathExists) {
+    Write-Host "ERROR: TAR file not found at: $TarPath" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "   Parent directory exists: $(Test-Path (Split-Path $TarPath -Parent) -ErrorAction SilentlyContinue)" -ForegroundColor Yellow
+    Write-Host "   USERPROFILE             : $($env:USERPROFILE)" -ForegroundColor Yellow
+    Write-Host "   SETUP_WSL_TAR_PATH env  : '$($env:SETUP_WSL_TAR_PATH)'" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "Please place the Ubuntu TAR file at the configured path or update it in the Settings screen." -ForegroundColor Yellow
+    exit 1
+}
+
+$TarItem = $null
+try {
+    $TarItem = Get-Item -LiteralPath $TarPath -ErrorAction Stop
+} catch {
+    Write-Host "ERROR: File exists but Get-Item failed — $($_.Exception.Message)" -ForegroundColor Red
+    exit 1
+}
+$TarSize = $TarItem.Length / 1GB
 Write-Host "✓ TAR file found: $([Math]::Round($TarSize, 2)) GB"
 
 # ─── 2. Check if distro already imported ────────────────────────────────────
@@ -56,17 +92,55 @@ if (-not (Test-Path $InstallDir)) {
     Write-Host "✓ Directory exists: $InstallDir"
 }
 
+# Disk space check
+$drive = Split-Path -Qualifier $InstallDir
+try {
+    $disk = Get-PSDrive ($drive.TrimEnd(':')) -ErrorAction Stop
+    $freeGB = [Math]::Round($disk.Free / 1GB, 1)
+    Write-Host "   Free disk space on ${drive}: ${freeGB} GB"
+    if ($freeGB -lt 5) {
+        Write-Host "WARNING: Less than 5 GB free — import may fail" -ForegroundColor Yellow
+    }
+} catch {
+    Write-Host "   (could not check disk space for $drive)" -ForegroundColor Yellow
+}
+
 # ─── 4. Import the TAR ──────────────────────────────────────────────────────
 
 Write-Host "`n==> Step 4: Importing Ubuntu 22.04 (this may take 5-15 minutes)..."
 Write-Host "    Source : $TarPath"
 Write-Host "    Target : $InstallDir"
+Write-Host "    Running: wsl --import $DistroName $InstallDir <tarpath> --version 2"
 
 $importStart = Get-Date
-wsl --import $DistroName $InstallDir $TarPath --version 2
+$wslImportOutput = wsl --import $DistroName $InstallDir $TarPath --version 2 2>&1
 $importExitCode = $LASTEXITCODE
 $importEnd = Get-Date
 $importDuration = [Math]::Round(($importEnd - $importStart).TotalMinutes, 1)
+
+Write-Host "   wsl --import exit code : $importExitCode"
+Write-Host "   wsl --import duration  : $importDuration min"
+if ($wslImportOutput) {
+    Write-Host "   wsl --import output:"
+    $wslImportOutput | ForEach-Object { Write-Host "     $_" }
+} else {
+    Write-Host "   wsl --import produced no output"
+}
+
+Write-Host "`n   Install dir contents after import:"
+try {
+    $items = Get-ChildItem $InstallDir -ErrorAction Stop
+    if ($items) {
+        $items | ForEach-Object { Write-Host "     $($_.Name)  ($([Math]::Round($_.Length / 1MB, 1)) MB)" }
+    } else {
+        Write-Host "     (directory is empty — import likely failed)" -ForegroundColor Yellow
+    }
+} catch {
+    Write-Host "     (could not read directory: $_)" -ForegroundColor Yellow
+}
+
+Write-Host "`n   wsl --list --verbose after import:"
+wsl --list --verbose 2>&1 | ForEach-Object { Write-Host "     $_" }
 
 if ($importExitCode -ne 0) {
     Write-Host "ERROR: wsl --import failed with exit code $importExitCode" -ForegroundColor Red
@@ -112,12 +186,14 @@ $timeoutSecs = 120
 $elapsed = 0
 $found = $false
 while ($elapsed -lt $timeoutSecs) {
-    $check = (wsl --list --quiet 2>$null) -replace '\0','' | Where-Object { $_ -match $DistroName }
+    $rawList = (wsl --list --quiet 2>$null) -replace '\0',''
+    $check = $rawList | Where-Object { $_ -match $DistroName }
     if ($check) { $found = $true; break }
     Start-Sleep -Seconds 1
     $elapsed++
     if ($elapsed % 5 -eq 0) {
-        Write-Host "   Still waiting... (${elapsed}s)"
+        $visibleNames = ($rawList | Where-Object { $_ -match '\S' } | ForEach-Object { $_.Trim() }) -join ', '
+        Write-Host "   Still waiting... (${elapsed}s) — wsl --list sees: [$visibleNames]"
     }
 }
 if ($found) {
