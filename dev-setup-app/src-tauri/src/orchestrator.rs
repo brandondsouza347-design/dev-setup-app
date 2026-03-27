@@ -456,26 +456,26 @@ fn build_script_command(
         "redis_mac"     => ("macos", "setup_redis.sh",        "bash", vec![]),
         "vscode_mac"    => ("macos", "setup_vscode.sh",       "bash", vec![]),
         // Windows
-        "enable_wsl"    => ("windows", "enable_wsl.ps1",          "powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),
-        "import_wsl_tar"=> ("windows", "import_wsl_tar.ps1",      "powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),
-        "wsl_network"   => ("windows", "setup_wsl_network.ps1",   "powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),
-        "vscode_windows"=> ("windows", "setup_vscode_windows.ps1","powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),
-        "git_ssh_windows"=>("windows","setup_git_ssh.ps1",        "powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),        // Windows — WSL-side bash scripts (invoked via wsl -d ERC bash)
+        "enable_wsl"    => ("windows", "enable_wsl.ps1",          "powershell", vec![]),
+        "import_wsl_tar"=> ("windows", "import_wsl_tar.ps1",      "powershell", vec![]),
+        "wsl_network"   => ("windows", "setup_wsl_network.ps1",   "powershell", vec![]),
+        "vscode_windows"=> ("windows", "setup_vscode_windows.ps1","powershell", vec![]),
+        "git_ssh_windows"=>("windows","setup_git_ssh.ps1",        "powershell", vec![]),
         "pyenv_wsl"       => ("windows", "setup_pyenv_wsl.sh",         "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
         "nvm_wsl"          => ("windows", "setup_nvm_wsl.sh",           "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
         "ubuntu_user_wsl"  => ("windows", "setup_ubuntu_user_wsl.sh",   "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
         "postgres_wsl"     => ("windows", "setup_postgres_wsl.sh",      "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
         "redis_wsl"        => ("windows", "setup_redis_wsl.sh",         "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
         // Windows-side PowerShell scripts
-        "wslconfig_networking" => ("windows", "setup_wslconfig_networking.ps1", "powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),
-        "wsl_cleanup"          => ("windows", "setup_wsl_cleanup.ps1",          "powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),
-        "windows_hosts"        => ("windows", "setup_windows_hosts.ps1",        "powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),
+        "wslconfig_networking" => ("windows", "setup_wslconfig_networking.ps1", "powershell", vec![]),
+        "wsl_cleanup"          => ("windows", "setup_wsl_cleanup.ps1",          "powershell", vec![]),
+        "windows_hosts"        => ("windows", "setup_windows_hosts.ps1",        "powershell", vec![]),
         // Revert scripts
-        "revert_shutdown_wsl"  => ("windows", "revert_wsl_shutdown.ps1",   "powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),
-        "revert_wsl_distro"    => ("windows", "revert_wsl_distro.ps1",     "powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),
-        "revert_wslconfig"     => ("windows", "revert_wslconfig.ps1",      "powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),
-        "revert_windows_hosts" => ("windows", "revert_windows_hosts.ps1",  "powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),
-        "revert_wsl_features"  => ("windows", "revert_wsl_features.ps1",   "powershell", vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string()]),
+        "revert_shutdown_wsl"  => ("windows", "revert_wsl_shutdown.ps1",   "powershell", vec![]),
+        "revert_wsl_distro"    => ("windows", "revert_wsl_distro.ps1",     "powershell", vec![]),
+        "revert_wslconfig"     => ("windows", "revert_wslconfig.ps1",      "powershell", vec![]),
+        "revert_windows_hosts" => ("windows", "revert_windows_hosts.ps1",  "powershell", vec![]),
+        "revert_wsl_features"  => ("windows", "revert_wsl_features.ps1",   "powershell", vec![]),
         _ => return Err(format!("Unknown step id: {}", step.id)),
     };
 
@@ -488,11 +488,30 @@ fn build_script_command(
         if s.starts_with(r"\\?\") { s[4..].to_string() } else { s }
     };
 
-    // PowerShell's -File parameter breaks on paths containing spaces (e.g. a user
-    // home dir or an install path like "Dev_Setup"). Use -Command with the call
-    // operator & instead — single-quoting the path handles spaces and all other
-    // special characters. The extra_args from the match above are discarded for
-    // PowerShell; all flags are rebuilt here.
+    // For WSL bash scripts convert the Windows path to a WSL /mnt/ path so that
+    // bash receives a valid Linux path even when the Windows path contains spaces
+    // (e.g. a username with a space). C:\foo\bar → /mnt/c/foo/bar.
+    if program == "wsl" {
+        let wsl_path = {
+            let s = path_str.replace('\\', "/");
+            if s.len() >= 2 && s.as_bytes()[1] == b':' {
+                let drive = (s.as_bytes()[0] as char).to_ascii_lowercase();
+                format!("/mnt/{}{}", drive, &s[2..])
+            } else {
+                s
+            }
+        };
+        return Ok((program.to_string(), wsl_path, extra_args));
+    }
+
+    // ENCODING FIX: Windows PowerShell 5.1 reads .ps1 files using the system
+    // code page (CP1252) when no BOM is present. The scripts contain UTF-8
+    // characters such as \u2713 (✓, bytes E2 9C 93) whose byte 0x93 maps to the
+    // curly-quote \u201C in CP1252 — this terminates string literals mid-line
+    // and cascades parse failures through the rest of the block.
+    // Reading via Get-Content -Encoding UTF8 and executing as a scriptblock
+    // forces correct UTF-8 parsing on every PS5.1 system with no BOM required.
+    // Single-quoting the path (with '' escaping) also handles spaces in the path.
     let (final_args, final_path) = if program == "powershell" {
         let escaped = path_str.replace('\'', "''");
         (
@@ -502,7 +521,7 @@ fn build_script_command(
                 "-ExecutionPolicy".to_string(),
                 "Bypass".to_string(),
                 "-Command".to_string(),
-                format!("& '{}'", escaped),
+                format!("& ([scriptblock]::Create((Get-Content -LiteralPath '{}' -Encoding UTF8 -Raw)))", escaped),
             ],
             String::new(),
         )

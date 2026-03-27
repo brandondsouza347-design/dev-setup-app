@@ -45,13 +45,18 @@ if ($wslGitName) {
     $wslGitEmail = wsl -d $DistroName -- bash -c "git config --global user.email 2>/dev/null" 2>$null
     Write-Host "   Email: $wslGitEmail"
 } else {
-    # Use Windows Git config as default, or prompt
-    if (-not $winGitName) {
-        $winGitName = Read-Host "Enter your full name for Git commits"
-    }
-    if (-not $winGitEmail) {
-        $winGitEmail = Read-Host "Enter your email address for Git commits"
-    }
+    # Use Windows Git config if available, then env vars injected by the installer,
+    # then skip with a warning — Read-Host cannot be used (no interactive terminal).
+    if (-not $winGitName) { $winGitName = $env:SETUP_GIT_NAME }
+    if (-not $winGitEmail) { $winGitEmail = $env:SETUP_GIT_EMAIL }
+
+    if (-not $winGitName -or -not $winGitEmail) {
+        Write-Host "" 
+        Write-Host "⚠ Git identity not configured — skipping git config in WSL." -ForegroundColor Yellow
+        Write-Host "  Set it manually once setup is complete:" -ForegroundColor Yellow
+        Write-Host "    wsl -d $DistroName -- git config --global user.name 'Your Name'" -ForegroundColor Cyan
+        Write-Host "    wsl -d $DistroName -- git config --global user.email 'your@email.com'" -ForegroundColor Cyan
+    } else {
 
     wsl -d $DistroName -- bash -c @"
 git config --global user.name '$winGitName'
@@ -62,7 +67,7 @@ git config --global init.defaultBranch main
 git config --global pull.rebase false
 echo '✓ Git identity configured'
 "@
-}
+    }
 
 # ─── 4. Generate SSH key ──────────────────────────────────────────────────────
 
