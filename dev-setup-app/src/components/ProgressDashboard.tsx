@@ -207,24 +207,6 @@ export const ProgressDashboard: React.FC<Props> = ({
                         Skip
                       </button>
                     )}
-                    <button
-                      onClick={() => onGoTo('revert')}
-                      className="flex items-center gap-1 px-3 py-1 text-xs border border-red-300 dark:border-red-700 text-red-500 dark:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                    >
-                      <Undo2 className="w-3 h-3" />
-                      Revert
-                    </button>
-                  </div>
-                )}
-                {status === 'done' && !isRunning && (
-                  <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      onClick={() => onGoTo('revert')}
-                      className="flex items-center gap-1 px-3 py-1 text-xs border border-red-300 dark:border-red-700 text-red-500 dark:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                    >
-                      <Undo2 className="w-3 h-3" />
-                      Revert
-                    </button>
                   </div>
                 )}
 

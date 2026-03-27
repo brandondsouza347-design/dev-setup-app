@@ -18,7 +18,7 @@ $WinVer = [System.Environment]::OSVersion.Version
 Write-Host "    Windows version: $($WinVer.Major).$($WinVer.Minor) Build $($WinVer.Build)"
 
 if ($WinVer.Build -lt 19041) {
-    Write-Error "WSL2 requires Windows 10 version 2004 (Build 19041) or higher, or Windows 11."
+    Write-Host "ERROR: WSL2 requires Windows 10 version 2004 (Build 19041) or higher, or Windows 11." -ForegroundColor Red
     exit 1
 }
 Write-Host "✓ Windows version is compatible with WSL2"
