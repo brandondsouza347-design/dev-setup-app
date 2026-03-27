@@ -168,7 +168,7 @@ export const RevertScreen: React.FC<Props> = ({
       <div className="max-w-2xl mx-auto px-6 py-10">
 
         {/* Warning banner */}
-        <div className="flex gap-4 p-5 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-xl mb-8">
+        <div className="flex gap-4 p-5 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-xl mb-6">
           <AlertTriangle className="w-7 h-7 text-red-500 shrink-0 mt-0.5" />
           <div>
             <h2 className="text-lg font-bold text-red-700 dark:text-red-400 mb-1">
@@ -176,8 +176,30 @@ export const RevertScreen: React.FC<Props> = ({
             </h2>
             <p className="text-sm text-red-600 dark:text-red-300">
               This will <strong>permanently delete</strong> your WSL environment and all files
-              inside ERC Ubuntu. A backup will be attempted to <code className="bg-red-100 dark:bg-red-800 px-1 rounded">~/WSL_Backup/</code> before deletion,
-              but this is not guaranteed.
+              inside ERC Ubuntu.
+            </p>
+          </div>
+        </div>
+
+        {/* Backup guarantee callout */}
+        <div className="flex gap-4 p-5 bg-amber-50 dark:bg-amber-900/20 border-2 border-amber-400 dark:border-amber-600 rounded-xl mb-8">
+          <ShieldAlert className="w-6 h-6 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <p className="font-bold text-amber-800 dark:text-amber-300 mb-1">
+              Backup is mandatory — deletion is blocked until it succeeds
+            </p>
+            <p className="text-amber-700 dark:text-amber-400 mb-2">
+              Before any data is removed, the ERC distro is exported to{' '}
+              <code className="bg-amber-100 dark:bg-amber-800 px-1 rounded">%USERPROFILE%\WSL_Backup\</code>.
+              The script verifies the file exists on disk and is a valid non-empty TAR.
+              If the backup cannot be confirmed, <strong>the revert stops immediately</strong> and
+              nothing is deleted.
+            </p>
+            <p className="text-amber-700 dark:text-amber-400">
+              To restore after revert:{' '}
+              <code className="text-xs bg-amber-100 dark:bg-amber-800 px-1.5 py-0.5 rounded block mt-1">
+                wsl --import ERC &lt;install-dir&gt; %USERPROFILE%\WSL_Backup\erc_backup_*.tar --version 2
+              </code>
             </p>
           </div>
         </div>
@@ -212,16 +234,6 @@ export const RevertScreen: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Backup info */}
-        <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg mb-8 text-sm text-blue-700 dark:text-blue-300">
-          <strong>Backup:</strong> The ERC distro will be exported to{' '}
-          <code className="bg-blue-100 dark:bg-blue-800 px-1 rounded">~/WSL_Backup/</code> before being
-          deleted. To restore later:<br />
-          <code className="text-xs mt-1 block bg-blue-100 dark:bg-blue-800 px-2 py-1 rounded mt-2">
-            wsl --import ERC &lt;install-dir&gt; ~/WSL_Backup/erc_backup_*.tar --version 2
-          </code>
-        </div>
-
         {/* Confirmation checkbox */}
         <label className="flex items-start gap-3 cursor-pointer mb-8 select-none">
           <input
@@ -231,8 +243,9 @@ export const RevertScreen: React.FC<Props> = ({
             className="mt-0.5 w-4 h-4 accent-red-600 cursor-pointer"
           />
           <span className="text-sm text-gray-700 dark:text-gray-300">
-            I understand that this will <strong>permanently remove</strong> my WSL environment.
-            I have saved any important work inside the ERC distro.
+            I understand that a <strong>verified backup will be created first</strong> and that,
+            once the backup is confirmed on disk, my WSL environment will be{' '}
+            <strong>permanently deleted</strong>. I have saved any important work inside the ERC distro.
           </span>
         </label>
 
