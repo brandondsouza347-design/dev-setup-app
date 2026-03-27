@@ -27,8 +27,8 @@ export const WelcomeScreen: React.FC<Props> = ({ osInfo, onNext }) => {
   const whatInstalls = isMac
     ? [
         '🍺 Homebrew — macOS package manager',
-        '🐍 pyenv + Python 3.9.21 + virtualenv',
-        '🟢 NVM + Node.js 16.20.2 + Gulp',
+        '🐍 pyenv + Python 3.9.21 + erc virtualenv',
+        '🟢 NVM v0.40.1 + Node.js 22.10.0 + Gulp',
         '🐘 PostgreSQL 16 (with roles & databases)',
         '📦 Redis cache server',
         '💙 VS Code extensions & configuration',
@@ -39,6 +39,8 @@ export const WelcomeScreen: React.FC<Props> = ({ osInfo, onNext }) => {
         '🌐 WSL network & DNS configuration',
         '💙 VS Code + Remote-WSL extension',
         '🔑 Git identity + SSH key generation',
+        '🐍 pyenv + Python 3.9.21 + erc virtualenv (WSL — skipped if present)',
+        '🟢 NVM v0.40.1 + Node.js 22.10.0 (WSL — skipped if present)',
       ];
 
   return (
