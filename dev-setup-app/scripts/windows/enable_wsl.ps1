@@ -23,9 +23,48 @@ if ($WinVer.Build -lt 19041) {
 }
 Write-Host "✓ Windows version is compatible with WSL2"
 
-# ─── 2. Enable WSL feature ──────────────────────────────────────────────────
+# ─── 2. Check CPU virtualisation is enabled ─────────────────────────────────────────────────────
 
-Write-Host "`n==> Step 2: Enabling Windows Subsystem for Linux feature..."
+Write-Host "`n==> Step 2: Checking CPU virtualisation support (required for WSL2)..."
+try {
+    $cpu = Get-WmiObject -Class Win32_Processor | Select-Object -First 1
+    Write-Host "   CPU: $($cpu.Name)"
+    $virtEnabled = $cpu.VirtualizationFirmwareEnabled
+    Write-Host "   Virtualisation firmware enabled: $virtEnabled"
+
+    if ($virtEnabled -eq $false) {
+        Write-Host ""
+        Write-Host "ERROR: CPU virtualisation is DISABLED in your BIOS/UEFI firmware." -ForegroundColor Red
+        Write-Host "       WSL2 requires hardware virtualisation to run." -ForegroundColor Red
+        Write-Host ""
+
+        # Detect Intel vs AMD and give specific BIOS instructions
+        if ($cpu.Name -match "Intel") {
+            Write-Host "  Your CPU is Intel. Enable Intel Virtualization Technology (VT-x):" -ForegroundColor Yellow
+            Write-Host "    1. Restart your PC and enter BIOS/UEFI (usually F2 or Del on boot)" -ForegroundColor Yellow
+            Write-Host "    2. Go to: Advanced → CPU Configuration" -ForegroundColor Yellow
+            Write-Host "    3. Set 'Intel Virtualization Technology' to: Enabled" -ForegroundColor Yellow
+            Write-Host "    4. Save and exit (usually F10), then re-run this installer" -ForegroundColor Yellow
+        } else {
+            Write-Host "  Your CPU is AMD. Enable SVM Mode:" -ForegroundColor Yellow
+            Write-Host "    1. Restart your PC and enter BIOS/UEFI (usually Del or F2 on boot)" -ForegroundColor Yellow
+            Write-Host "    2. Go to: Advanced → CPU Configuration (or OC / Overclocking)" -ForegroundColor Yellow
+            Write-Host "    3. Set 'SVM Mode' to: Enabled" -ForegroundColor Yellow
+            Write-Host "    4. Save and exit (usually F10), then re-run this installer" -ForegroundColor Yellow
+        }
+        Write-Host ""
+        Write-Host "  After reboot, verify: Task Manager → Performance → CPU → Virtualisation: Enabled" -ForegroundColor Cyan
+        exit 1
+    }
+    Write-Host "✓ CPU virtualisation is enabled"
+} catch {
+    Write-Host "   ⚠ Could not query CPU virtualisation status — continuing" -ForegroundColor Yellow
+    Write-Host "     After reboot verify: Task Manager → Performance → CPU → Virtualisation: Enabled" -ForegroundColor Yellow
+}
+
+# ─── 3. Enable WSL feature ─────────────────────────────────────────────────────
+
+Write-Host "`n==> Step 3: Enabling Windows Subsystem for Linux feature..."
 $wslFeature = Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Windows-Subsystem-Linux
 if ($wslFeature.State -eq "Enabled") {
     Write-Host "✓ WSL feature already enabled"
@@ -35,9 +74,9 @@ if ($wslFeature.State -eq "Enabled") {
     $rebootRequired = $true
 }
 
-# ─── 3. Enable Virtual Machine Platform ────────────────────────────────────
+# ─── 4. Enable Virtual Machine Platform ─────────────────────────────────────────────────────
 
-Write-Host "`n==> Step 3: Enabling Virtual Machine Platform..."
+Write-Host "`n==> Step 4: Enabling Virtual Machine Platform..."
 $vmFeature = Get-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform
 if ($vmFeature.State -eq "Enabled") {
     Write-Host "✓ Virtual Machine Platform already enabled"
@@ -47,9 +86,9 @@ if ($vmFeature.State -eq "Enabled") {
     $rebootRequired = $true
 }
 
-# ─── 4. Set WSL2 as default ─────────────────────────────────────────────────
+# ─── 5. Set WSL2 as default ─────────────────────────────────────────────────────
 
-Write-Host "`n==> Step 4: Setting WSL2 as default version..."
+Write-Host "`n==> Step 5: Setting WSL2 as default version..."
 try {
     wsl --set-default-version 2
     Write-Host "✓ WSL2 set as default"
@@ -57,9 +96,9 @@ try {
     Write-Host "⚠ Could not set WSL2 as default. This may succeed after reboot."
 }
 
-# ─── 5. Install WSL kernel update if needed ─────────────────────────────────
+# ─── 6. Install WSL kernel update if needed ───────────────────────────────────────────────────
 
-Write-Host "`n==> Step 5: Checking WSL kernel update..."
+Write-Host "`n==> Step 6: Checking WSL kernel update..."
 try {
     wsl --update
     Write-Host "✓ WSL kernel is up to date"
@@ -67,7 +106,7 @@ try {
     Write-Host "⚠ WSL kernel update failed — may succeed after reboot."
 }
 
-# ─── 6. Status ──────────────────────────────────────────────────────────────
+# ─── 7. Status ─────────────────────────────────────────────────────
 
 Write-Host "`n==> WSL Status:"
 wsl --status 2>$null
