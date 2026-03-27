@@ -309,7 +309,7 @@ pub struct PrereqCheck {
 }
 
 fn check_command_available(cmd: &str, label: &str) -> PrereqCheck {
-    let available = which::which(cmd).is_ok();
+    let available = which::which(cmd).is_ok() || check_fallback_path(cmd);
     PrereqCheck {
         name: label.to_string(),
         passed: available,
@@ -319,6 +319,28 @@ fn check_command_available(cmd: &str, label: &str) -> PrereqCheck {
             format!("{} not found in PATH", label)
         },
     }
+}
+
+/// On Windows, Tauri apps may not inherit the full system PATH.
+/// Check well-known absolute locations as a fallback.
+#[allow(unused_variables)]
+fn check_fallback_path(cmd: &str) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        let fallbacks: &[&str] = match cmd {
+            "powershell" => &[
+                r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+            ],
+            "wsl" => &[
+                r"C:\Windows\System32\wsl.exe",
+                r"C:\Windows\SysNative\wsl.exe",
+            ],
+            _ => &[],
+        };
+        return fallbacks.iter().any(|p| std::path::Path::new(p).exists());
+    }
+    #[allow(unreachable_code)]
+    false
 }
 
 fn check_disk_space() -> PrereqCheck {
