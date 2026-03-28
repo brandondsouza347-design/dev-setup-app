@@ -28,6 +28,7 @@ interface UseSetupReturn {
   setupStarted: boolean;
   setupComplete: boolean;
   isRunning: boolean;
+  isRollingBackStep: boolean;
   page: WizardPage;
   // Revert
   revertSteps: SetupStep[];
@@ -43,6 +44,7 @@ interface UseSetupReturn {
   startSetup: () => Promise<void>;
   resumeSetup: () => Promise<void>;
   retryStep: (id: string) => Promise<void>;
+  revertStep: (id: string) => Promise<void>;
   skipStep: (id: string) => Promise<void>;
   resetSetup: () => Promise<void>;
   openTerminal: () => Promise<void>;
@@ -74,6 +76,7 @@ export function useSetup(): UseSetupReturn {
   const [setupStarted, setSetupStarted] = useState(false);
   const [setupComplete, setSetupComplete] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
+  const [isRollingBackStep, setIsRollingBackStep] = useState(false);
 
   // Revert state
   const [revertSteps, setRevertSteps] = useState<SetupStep[]>([]);
@@ -272,6 +275,15 @@ export function useSetup(): UseSetupReturn {
     }
   }, []);
 
+  const revertStep = useCallback(async (id: string) => {
+    setIsRollingBackStep(true);
+    try {
+      await invoke('revert_setup_step', { stepId: id });
+    } finally {
+      setIsRollingBackStep(false);
+    }
+  }, []);
+
   const resumeSetup = useCallback(async () => {
     setIsRunning(true);
     try {
@@ -348,6 +360,7 @@ export function useSetup(): UseSetupReturn {
     setupStarted,
     setupComplete,
     isRunning,
+    isRollingBackStep,
     page,
     revertSteps,
     revertResults,
@@ -360,6 +373,7 @@ export function useSetup(): UseSetupReturn {
     startSetup,
     resumeSetup,
     retryStep,
+    revertStep,
     skipStep,
     resetSetup,
     openTerminal,

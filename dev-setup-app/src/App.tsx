@@ -78,12 +78,15 @@ function App() {
         {setup.page === 'progress' && (
           <ProgressDashboard
             steps={setup.steps}
+            revertSteps={setup.revertSteps}
             stepResults={setup.stepResults}
             logs={logsForDashboard}
             currentStepIndex={setup.currentStepIndex}
             isRunning={setup.isRunning}
+            isRollingBackStep={setup.isRollingBackStep}
             setupComplete={setup.setupComplete}
             onRetry={setup.retryStep}
+            onRevertStep={setup.revertStep}
             onSkip={setup.skipStep}
             onContinue={setup.resumeSetup}
             onOpenTerminal={setup.openTerminal}

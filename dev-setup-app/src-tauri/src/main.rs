@@ -28,6 +28,7 @@ fn main() {
             commands::resume_setup,
             commands::run_step,
             commands::retry_step,
+            commands::revert_setup_step,
             commands::skip_step,
             commands::get_state,
             commands::reset_state,

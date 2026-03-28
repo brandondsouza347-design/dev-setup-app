@@ -32,6 +32,7 @@ export interface SetupStep {
   category: StepCategory;
   required: boolean;
   estimated_minutes: number;
+  rollback_steps: string[];
 }
 
 export interface StepResult {

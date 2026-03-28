@@ -9,12 +9,15 @@ import { StepBadge } from './StepBadge';
 
 interface Props {
   steps: SetupStep[];
+  revertSteps: SetupStep[];
   stepResults: Record<string, StepResult>;
   logs: Record<string, LogEntry[]>;
   currentStepIndex: number;
   isRunning: boolean;
+  isRollingBackStep: boolean;
   setupComplete: boolean;
   onRetry: (id: string) => Promise<void>;
+  onRevertStep: (id: string) => Promise<void>;
   onSkip: (id: string) => Promise<void>;
   onContinue: () => Promise<void>;
   onOpenTerminal: () => void;
@@ -26,12 +29,15 @@ type InternalLogEntry = LogEntry;
 
 export const ProgressDashboard: React.FC<Props> = ({
   steps,
+  revertSteps,
   stepResults,
   logs,
   currentStepIndex,
   isRunning,
+  isRollingBackStep,
   setupComplete,
   onRetry,
+  onRevertStep,
   onSkip,
   onContinue,
   onOpenTerminal,
@@ -39,6 +45,7 @@ export const ProgressDashboard: React.FC<Props> = ({
 }) => {
   const [expandedStep, setExpandedStep] = useState<string | null>(null);
   const [retrying, setRetrying] = useState<string | null>(null);
+  const [reverting, setReverting] = useState<string | null>(null);
   const [logsOpen, setLogsOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
@@ -68,6 +75,9 @@ export const ProgressDashboard: React.FC<Props> = ({
     ...steps.flatMap((step) =>
       (logs[step.id] ?? []).map((entry) => ({ ...entry, stepTitle: step.title }))
     ),
+    ...revertSteps.flatMap((step) =>
+      (logs[step.id] ?? []).map((entry) => ({ ...entry, stepTitle: step.title }))
+    ),
   ].sort((a, b) => (a.ts ?? 0) - (b.ts ?? 0));
 
   const handleRetry = async (id: string) => {
@@ -79,12 +89,22 @@ export const ProgressDashboard: React.FC<Props> = ({
     }
   };
 
+  const handleRevert = async (id: string) => {
+    setReverting(id);
+    try {
+      await onRevertStep(id);
+    } finally {
+      setReverting(null);
+    }
+  };
+
   const doneCount = Object.values(stepResults).filter((r) => r.status === 'done').length;
   const failedCount = Object.values(stepResults).filter((r) => r.status === 'failed').length;
   const progress = steps.length > 0 ? (doneCount / steps.length) * 100 : 0;
+  const isBusy = isRunning || isRollingBackStep;
   // Show "Continue Setup" when: not running, not complete, at least one step done,
   // and no currently failed steps — i.e. a retry just succeeded mid-sequence.
-  const showContinue = !isRunning && !setupComplete && doneCount > 0 && failedCount === 0;
+  const showContinue = !isBusy && !setupComplete && doneCount > 0 && failedCount === 0;
 
   return (
     <div className="flex flex-col h-full">
@@ -129,6 +149,15 @@ export const ProgressDashboard: React.FC<Props> = ({
           const isExpanded = expandedStep === step.id;
           const stepLogs = (logs[step.id] ?? []) as InternalLogEntry[];
           const isCurrent = idx === currentStepIndex && isRunning;
+          const hasLaterCompletedSteps = steps
+            .slice(idx + 1)
+            .some((laterStep) => (stepResults[laterStep.id]?.status ?? 'pending') === 'done');
+          const canRevert =
+            !isBusy &&
+            failedCount > 0 &&
+            step.rollback_steps.length > 0 &&
+            !hasLaterCompletedSteps &&
+            (status === 'done' || status === 'failed');
 
           return (
             <div
@@ -188,16 +217,26 @@ export const ProgressDashboard: React.FC<Props> = ({
                 </div>
 
                 {/* Action buttons */}
-                {status === 'failed' && !isRunning && (
+                {status === 'failed' && !isBusy && (
                   <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
                     <button
                       onClick={() => handleRetry(step.id)}
-                      disabled={retrying === step.id}
+                      disabled={retrying === step.id || reverting === step.id}
                       className="flex items-center gap-1 px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 transition-colors"
                     >
                       <RotateCcw className={`w-3 h-3 ${retrying === step.id ? 'animate-spin' : ''}`} />
                       Retry
                     </button>
+                    {step.rollback_steps.length > 0 && !hasLaterCompletedSteps && (
+                      <button
+                        onClick={() => handleRevert(step.id)}
+                        disabled={reverting === step.id}
+                        className="flex items-center gap-1 px-3 py-1 text-xs border border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/40 disabled:opacity-50 transition-colors"
+                      >
+                        <Undo2 className={`w-3 h-3 ${reverting === step.id ? 'animate-spin' : ''}`} />
+                        Revert Step
+                      </button>
+                    )}
                     {!step.required && (
                       <button
                         onClick={() => onSkip(step.id)}
@@ -207,6 +246,19 @@ export const ProgressDashboard: React.FC<Props> = ({
                         Skip
                       </button>
                     )}
+                  </div>
+                )}
+
+                {status === 'done' && canRevert && (
+                  <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => handleRevert(step.id)}
+                      disabled={reverting === step.id}
+                      className="flex items-center gap-1 px-3 py-1 text-xs border border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/40 disabled:opacity-50 transition-colors"
+                    >
+                      <Undo2 className={`w-3 h-3 ${reverting === step.id ? 'animate-spin' : ''}`} />
+                      Revert Step
+                    </button>
                   </div>
                 )}
 
@@ -281,7 +333,7 @@ export const ProgressDashboard: React.FC<Props> = ({
             <Terminal className="w-4 h-4" />
             Open Terminal
           </button>
-          {!isRunning && doneCount > 0 && (
+          {!isBusy && doneCount > 0 && (
             <button
               onClick={() => onGoTo('revert')}
               className="flex items-center gap-2 text-sm text-red-500 hover:text-red-700 dark:hover:text-red-400 transition-colors"

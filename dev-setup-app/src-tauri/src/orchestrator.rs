@@ -15,6 +15,8 @@ pub struct SetupStep {
     pub category: StepCategory,
     pub required: bool,
     pub estimated_minutes: u8,
+    #[serde(default)]
+    pub rollback_steps: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -71,6 +73,7 @@ pub fn get_revert_steps_for_os(os: &str) -> Vec<SetupStep> {
             category: StepCategory::Revert,
             required: true,
             estimated_minutes: 1,
+            rollback_steps: vec![],
         },
         SetupStep {
             id: "revert_wsl_distro".to_string(),
@@ -80,6 +83,7 @@ pub fn get_revert_steps_for_os(os: &str) -> Vec<SetupStep> {
             category: StepCategory::Revert,
             required: true,
             estimated_minutes: 15,
+            rollback_steps: vec![],
         },
         SetupStep {
             id: "revert_wslconfig".to_string(),
@@ -89,6 +93,7 @@ pub fn get_revert_steps_for_os(os: &str) -> Vec<SetupStep> {
             category: StepCategory::Revert,
             required: true,
             estimated_minutes: 1,
+            rollback_steps: vec![],
         },
         SetupStep {
             id: "revert_windows_hosts".to_string(),
@@ -98,6 +103,7 @@ pub fn get_revert_steps_for_os(os: &str) -> Vec<SetupStep> {
             category: StepCategory::Revert,
             required: true,
             estimated_minutes: 1,
+            rollback_steps: vec![],
         },
         SetupStep {
             id: "revert_wsl_features".to_string(),
@@ -107,6 +113,7 @@ pub fn get_revert_steps_for_os(os: &str) -> Vec<SetupStep> {
             category: StepCategory::Revert,
             required: false,
             estimated_minutes: 2,
+            rollback_steps: vec![],
         },
     ]
 }
@@ -143,6 +150,7 @@ fn all_steps() -> Vec<SetupStep> {
             category: StepCategory::Prerequisites,
             required: true,
             estimated_minutes: 5,
+            rollback_steps: vec![],
         },
         SetupStep {
             id: "homebrew".to_string(),
@@ -152,6 +160,7 @@ fn all_steps() -> Vec<SetupStep> {
             category: StepCategory::PackageManager,
             required: true,
             estimated_minutes: 3,
+            rollback_steps: vec![],
         },
         SetupStep {
             id: "pyenv".to_string(),
@@ -161,6 +170,7 @@ fn all_steps() -> Vec<SetupStep> {
             category: StepCategory::Python,
             required: true,
             estimated_minutes: 10,
+            rollback_steps: vec![],
         },
         SetupStep {
             id: "nvm".to_string(),
@@ -170,6 +180,7 @@ fn all_steps() -> Vec<SetupStep> {
             category: StepCategory::Node,
             required: true,
             estimated_minutes: 5,
+            rollback_steps: vec![],
         },
         SetupStep {
             id: "postgres_mac".to_string(),
@@ -179,6 +190,7 @@ fn all_steps() -> Vec<SetupStep> {
             category: StepCategory::Database,
             required: true,
             estimated_minutes: 5,
+            rollback_steps: vec![],
         },
         SetupStep {
             id: "redis_mac".to_string(),
@@ -188,6 +200,7 @@ fn all_steps() -> Vec<SetupStep> {
             category: StepCategory::Cache,
             required: false,
             estimated_minutes: 2,
+            rollback_steps: vec![],
         },
         SetupStep {
             id: "vscode_mac".to_string(),
@@ -197,6 +210,7 @@ fn all_steps() -> Vec<SetupStep> {
             category: StepCategory::Editor,
             required: true,
             estimated_minutes: 3,
+            rollback_steps: vec![],
         },
         // ── Windows steps ────────────────────────────────────────────────────
         SetupStep {
@@ -207,6 +221,7 @@ fn all_steps() -> Vec<SetupStep> {
             category: StepCategory::Wsl,
             required: true,
             estimated_minutes: 5,
+            rollback_steps: vec![],
         },
         SetupStep {
             id: "import_wsl_tar".to_string(),
@@ -216,6 +231,10 @@ fn all_steps() -> Vec<SetupStep> {
             category: StepCategory::Wsl,
             required: true,
             estimated_minutes: 10,
+            rollback_steps: vec![
+                "revert_shutdown_wsl".to_string(),
+                "revert_wsl_distro".to_string(),
+            ],
         },
         SetupStep {
             id: "wsl_network".to_string(),
@@ -225,6 +244,7 @@ fn all_steps() -> Vec<SetupStep> {
             category: StepCategory::Network,
             required: true,
             estimated_minutes: 3,
+            rollback_steps: vec![],
         },
         SetupStep {
             id: "vscode_windows".to_string(),
@@ -234,6 +254,7 @@ fn all_steps() -> Vec<SetupStep> {
             category: StepCategory::Editor,
             required: true,
             estimated_minutes: 5,
+            rollback_steps: vec![],
         },
         SetupStep {
             id: "git_ssh_windows".to_string(),
@@ -243,6 +264,7 @@ fn all_steps() -> Vec<SetupStep> {
             category: StepCategory::Vcs,
             required: true,
             estimated_minutes: 5,
+            rollback_steps: vec![],
         },
         SetupStep {
             id: "pyenv_wsl".to_string(),
@@ -252,6 +274,7 @@ fn all_steps() -> Vec<SetupStep> {
             category: StepCategory::Python,
             required: false,
             estimated_minutes: 10,
+            rollback_steps: vec![],
         },
         SetupStep {
             id: "nvm_wsl".to_string(),
@@ -261,6 +284,7 @@ fn all_steps() -> Vec<SetupStep> {
             category: StepCategory::Node,
             required: false,
             estimated_minutes: 5,
+            rollback_steps: vec![],
         },
         SetupStep {
             id: "ubuntu_user_wsl".to_string(),
@@ -270,6 +294,7 @@ fn all_steps() -> Vec<SetupStep> {
             category: StepCategory::Wsl,
             required: false,
             estimated_minutes: 2,
+            rollback_steps: vec![],
         },
         SetupStep {
             id: "postgres_wsl".to_string(),
@@ -279,6 +304,7 @@ fn all_steps() -> Vec<SetupStep> {
             category: StepCategory::Database,
             required: false,
             estimated_minutes: 5,
+            rollback_steps: vec![],
         },
         SetupStep {
             id: "redis_wsl".to_string(),
@@ -288,6 +314,7 @@ fn all_steps() -> Vec<SetupStep> {
             category: StepCategory::Cache,
             required: false,
             estimated_minutes: 3,
+            rollback_steps: vec![],
         },
         SetupStep {
             id: "wslconfig_networking".to_string(),
@@ -297,6 +324,7 @@ fn all_steps() -> Vec<SetupStep> {
             category: StepCategory::Network,
             required: false,
             estimated_minutes: 1,
+            rollback_steps: vec![],
         },
         SetupStep {
             id: "wsl_cleanup".to_string(),
@@ -306,6 +334,7 @@ fn all_steps() -> Vec<SetupStep> {
             category: StepCategory::Wsl,
             required: false,
             estimated_minutes: 2,
+            rollback_steps: vec![],
         },
         SetupStep {
             id: "windows_hosts".to_string(),
@@ -315,6 +344,7 @@ fn all_steps() -> Vec<SetupStep> {
             category: StepCategory::Network,
             required: false,
             estimated_minutes: 1,
+            rollback_steps: vec![],
         },
     ]
 }

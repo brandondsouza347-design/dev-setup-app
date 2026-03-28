@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/schema.json",
   "productName": "Dev_Setup",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "identifier": "com.devsetup.app",
   "build": {
     "beforeDevCommand": "npm run dev",

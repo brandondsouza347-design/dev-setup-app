@@ -80,6 +80,45 @@ pub fn get_revert_steps(os: String) -> Vec<SetupStep> {
     get_revert_steps_for_os(&os)
 }
 
+fn emit_frontend_log(window: &WebviewWindow, step_id: &str, line: &str, level: &str) {
+    let _ = window.emit(
+        "step_log",
+        serde_json::json!({
+            "step_id": step_id,
+            "line": line,
+            "level": level,
+        }),
+    );
+}
+
+fn resolve_setup_rollback_steps(os: &str, step_id: &str) -> Result<(Vec<SetupStep>, usize, SetupStep, Vec<SetupStep>), String> {
+    let setup_steps = get_steps_for_os(os);
+    let target_index = setup_steps
+        .iter()
+        .position(|step| step.id == step_id)
+        .ok_or_else(|| format!("Unknown setup step: {}", step_id))?;
+    let target_step = setup_steps[target_index].clone();
+
+    if target_step.rollback_steps.is_empty() {
+        return Err(format!("Step '{}' does not support targeted revert", target_step.title));
+    }
+
+    let revert_steps = get_revert_steps_for_os(os);
+    let rollback_steps = target_step
+        .rollback_steps
+        .iter()
+        .map(|rollback_id| {
+            revert_steps
+                .iter()
+                .find(|step| step.id == *rollback_id)
+                .cloned()
+                .ok_or_else(|| format!("Rollback step '{}' is not defined", rollback_id))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok((setup_steps, target_index, target_step, rollback_steps))
+}
+
 /// Starts the full setup sequence from step 0.
 #[tauri::command]
 pub async fn start_setup(
@@ -284,6 +323,153 @@ pub async fn start_revert(
     }
 
     let _ = window.emit("revert_complete", true);
+    Ok(())
+}
+
+/// Reverts a single completed setup step using an explicit rollback mapping.
+/// This is currently limited to steps that declare safe rollback coverage.
+#[tauri::command]
+pub async fn revert_setup_step(
+    step_id: String,
+    window: WebviewWindow,
+    app_handle: AppHandle,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<(), String> {
+    let os = detect_os();
+    if os.os != "windows" {
+        return Err("Targeted revert is only supported on Windows".to_string());
+    }
+
+    let (setup_steps, target_index, target_step, rollback_steps) =
+        resolve_setup_rollback_steps(&os.os, &step_id)?;
+
+    let config = {
+        let s = state.lock().unwrap();
+        let current_status = s
+            .step_states
+            .get(&step_id)
+            .map(|ss| ss.status.clone())
+            .unwrap_or(StepStatus::Pending);
+        if !matches!(current_status, StepStatus::Done | StepStatus::Failed) {
+            return Err(format!(
+                "Step '{}' must be completed or failed before it can be reverted",
+                target_step.title
+            ));
+        }
+
+        let later_completed: Vec<String> = setup_steps
+            .iter()
+            .skip(target_index + 1)
+            .filter(|step| {
+                matches!(
+                    s.step_states.get(&step.id).map(|ss| ss.status.clone()),
+                    Some(StepStatus::Done)
+                )
+            })
+            .map(|step| step.title.clone())
+            .collect();
+        if !later_completed.is_empty() {
+            return Err(format!(
+                "Cannot revert '{}' because later setup steps already completed: {}. Use full Revert Setup instead.",
+                target_step.title,
+                later_completed.join(", ")
+            ));
+        }
+
+        s.config.clone()
+    };
+
+    emit_frontend_log(
+        &window,
+        &step_id,
+        &format!("↩ Reverting '{}'...", target_step.title),
+        "warn",
+    );
+
+    for rollback_step in &rollback_steps {
+        log::info!(
+            "revert_setup_step: running rollback step '{}' for setup step '{}'",
+            rollback_step.id,
+            target_step.id
+        );
+        let _ = window.emit(
+            "step_status",
+            serde_json::json!({ "id": rollback_step.id, "status": "running" }),
+        );
+
+        let start = std::time::Instant::now();
+        let result = execute_script_with_retry(window.clone(), app_handle.clone(), rollback_step, &config).await;
+        let duration = start.elapsed().as_secs();
+
+        match result {
+            Ok(_) => {
+                log::info!(
+                    "revert_setup_step: rollback step '{}' done in {}s",
+                    rollback_step.id,
+                    duration
+                );
+                let _ = window.emit(
+                    "step_status",
+                    serde_json::json!({ "id": rollback_step.id, "status": "done" }),
+                );
+            }
+            Err(err) => {
+                log::error!(
+                    "revert_setup_step: rollback step '{}' FAILED after {}s — {}",
+                    rollback_step.id,
+                    duration,
+                    err
+                );
+                let _ = window.emit(
+                    "step_status",
+                    serde_json::json!({ "id": rollback_step.id, "status": "failed", "error": err }),
+                );
+                return Err(format!(
+                    "Rollback step '{}' failed: {}",
+                    rollback_step.title,
+                    err
+                ));
+            }
+        }
+    }
+
+    let mut reset_step_ids: Vec<String> = Vec::new();
+    {
+        let mut s = state.lock().unwrap();
+        s.setup_complete = false;
+        s.current_step_index = target_index;
+
+        let target_state = s.get_or_create_step(&step_id);
+        target_state.status = StepStatus::Pending;
+        target_state.error = None;
+        target_state.duration_secs = None;
+        target_state.logs.clear();
+        reset_step_ids.push(step_id.clone());
+
+        for step in setup_steps.iter().skip(target_index + 1) {
+            let step_state = s.get_or_create_step(&step.id);
+            if matches!(step_state.status, StepStatus::Failed | StepStatus::Running | StepStatus::Pending) {
+                step_state.status = StepStatus::Pending;
+                step_state.error = None;
+                step_state.duration_secs = None;
+                reset_step_ids.push(step.id.clone());
+            }
+        }
+    }
+
+    for reset_id in reset_step_ids {
+        let _ = window.emit(
+            "step_status",
+            serde_json::json!({ "id": reset_id, "status": "pending" }),
+        );
+    }
+    emit_frontend_log(
+        &window,
+        &step_id,
+        &format!("↩ '{}' reverted. You can run setup again from this step.", target_step.title),
+        "success",
+    );
+
     Ok(())
 }
 
