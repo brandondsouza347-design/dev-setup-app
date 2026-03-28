@@ -221,7 +221,10 @@ fn all_steps() -> Vec<SetupStep> {
             category: StepCategory::Wsl,
             required: true,
             estimated_minutes: 5,
-            rollback_steps: vec![],
+            rollback_steps: vec![
+                "revert_shutdown_wsl".to_string(),
+                "revert_wsl_features".to_string(),
+            ],
         },
         SetupStep {
             id: "import_wsl_tar".to_string(),
@@ -244,7 +247,9 @@ fn all_steps() -> Vec<SetupStep> {
             category: StepCategory::Network,
             required: true,
             estimated_minutes: 3,
-            rollback_steps: vec![],
+            rollback_steps: vec![
+                "revert_wsl_network".to_string(),
+            ],
         },
         SetupStep {
             id: "vscode_windows".to_string(),
@@ -254,7 +259,9 @@ fn all_steps() -> Vec<SetupStep> {
             category: StepCategory::Editor,
             required: true,
             estimated_minutes: 5,
-            rollback_steps: vec![],
+            rollback_steps: vec![
+                "revert_vscode_windows".to_string(),
+            ],
         },
         SetupStep {
             id: "git_ssh_windows".to_string(),
@@ -264,7 +271,9 @@ fn all_steps() -> Vec<SetupStep> {
             category: StepCategory::Vcs,
             required: true,
             estimated_minutes: 5,
-            rollback_steps: vec![],
+            rollback_steps: vec![
+                "revert_git_ssh".to_string(),
+            ],
         },
         SetupStep {
             id: "pyenv_wsl".to_string(),
@@ -539,6 +548,9 @@ fn build_script_command(
         "revert_wslconfig"     => ("windows", "revert_wslconfig.ps1",      "powershell", vec![]),
         "revert_windows_hosts" => ("windows", "revert_windows_hosts.ps1",  "powershell", vec![]),
         "revert_wsl_features"  => ("windows", "revert_wsl_features.ps1",   "powershell", vec![]),
+        "revert_wsl_network"   => ("windows", "revert_wsl_network.ps1",    "powershell", vec![]),
+        "revert_git_ssh"       => ("windows", "revert_git_ssh.ps1",        "powershell", vec![]),
+        "revert_vscode_windows"=> ("windows", "revert_vscode_windows.ps1", "powershell", vec![]),
         _ => return Err(format!("Unknown step id: {}", step.id)),
     };
 
