@@ -27,7 +27,9 @@ Write-Host "✓ Windows version is compatible with WSL2"
 
 Write-Host "`n==> Step 2: Checking CPU virtualisation support (required for WSL2)..."
 try {
-    $cpu = Get-WmiObject -Class Win32_Processor | Select-Object -First 1
+    # Get-CimInstance is the modern replacement for Get-WmiObject (deprecated on Win11)
+    # and works identically on both Windows 10 and Windows 11.
+    $cpu = Get-CimInstance -ClassName Win32_Processor | Select-Object -First 1
     Write-Host "   CPU: $($cpu.Name)"
     $virtEnabled = $cpu.VirtualizationFirmwareEnabled
     Write-Host "   Virtualisation firmware enabled: $virtEnabled"
