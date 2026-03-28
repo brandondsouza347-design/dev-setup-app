@@ -369,8 +369,12 @@ pub async fn execute_script(
         }
         cmd.envs(build_env(config))
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
+            .stderr(Stdio::piped());
+        // Prevent a visible console window from flashing when spawning
+        // powershell.exe / wsl.exe from the GUI process on Windows.
+        #[cfg(target_os = "windows")]
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        cmd.spawn()
             .map_err(|e| {
                 log::error!("execute_script: failed to spawn '{}' for step '{}' — {}", program, step.id, e);
                 format!("Failed to spawn process: {}", e)

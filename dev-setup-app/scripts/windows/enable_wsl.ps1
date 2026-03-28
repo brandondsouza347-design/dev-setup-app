@@ -109,7 +109,14 @@ try {
 # ─── 7. Status ─────────────────────────────────────────────────────
 
 Write-Host "`n==> WSL Status:"
-wsl --status 2>$null
+try {
+    wsl --status 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "⚠ WSL status check returned code $LASTEXITCODE — WSL may still be completing an update" -ForegroundColor Yellow
+    }
+} catch {
+    Write-Host "⚠ Could not retrieve WSL status — WSL may be completing an update, this is normal" -ForegroundColor Yellow
+}
 
 if ($rebootRequired) {
     Write-Host "`n⚠  RESTART REQUIRED" -ForegroundColor Yellow
