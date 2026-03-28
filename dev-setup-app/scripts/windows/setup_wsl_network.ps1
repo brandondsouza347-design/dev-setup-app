@@ -58,7 +58,10 @@ nameserver 8.8.4.4
 nameserver 1.1.1.1
 "@
 
-wsl -d $DistroName -- bash -c "sudo rm -f /etc/resolv.conf; echo '$resolvConf' | sudo tee /etc/resolv.conf > /dev/null; sudo chattr +i /etc/resolv.conf 2>/dev/null || true"
+# chattr -i first in case a previous run made the file immutable — suppress
+# errors so the command never writes to stderr (which PS5.1 treats as a
+# NativeCommandError when ErrorActionPreference=Stop).
+wsl -d $DistroName -- bash -c "sudo chattr -i /etc/resolv.conf 2>/dev/null || true; sudo rm -f /etc/resolv.conf 2>/dev/null || true; printf '%s\n' '$resolvConf' | sudo tee /etc/resolv.conf > /dev/null; sudo chattr +i /etc/resolv.conf 2>/dev/null || true"
 Write-Host "✓ resolv.conf updated with Google + Cloudflare DNS"
 
 # ─── 4. Configure Windows hosts file ─────────────────────────────────────────
@@ -76,10 +79,27 @@ $entriesToAdd = @(
 
 foreach ($entry in $entriesToAdd) {
     $hostname = ($entry -split "\s+")[1]
+    # Re-read each iteration so we pick up entries written in the same loop.
+    $hostsContent = Get-Content -Path $hostsFile -Raw
     if ($hostsContent -match [regex]::Escape($hostname)) {
         Write-Host "   Already present: $hostname"
     } else {
-        Add-Content -Path $hostsFile -Value "`n$entry"
+        # Hosts file can be briefly locked by Defender/antivirus — retry up to 5x.
+        $maxRetries = 5; $retryDelay = 3; $attempt = 0; $written = $false
+        while (-not $written -and $attempt -lt $maxRetries) {
+            try {
+                Add-Content -Path $hostsFile -Value "`n$entry" -ErrorAction Stop
+                $written = $true
+            } catch {
+                $attempt++
+                if ($attempt -lt $maxRetries) {
+                    Write-Host "   Hosts file busy, retrying in ${retryDelay}s... ($attempt/$maxRetries)" -ForegroundColor Yellow
+                    Start-Sleep -Seconds $retryDelay
+                } else {
+                    throw
+                }
+            }
+        }
         Write-Host "✓ Added: $entry"
     }
 }
