@@ -279,6 +279,12 @@ export function useSetup(): UseSetupReturn {
     setIsRollingBackStep(true);
     try {
       await invoke('revert_setup_step', { stepId: id });
+    } catch (e) {
+      const msg = typeof e === 'string' ? e : (e as any)?.message ?? String(e);
+      setLogs((prev) => ({
+        ...prev,
+        [id]: [...(prev[id] ?? []), { stepId: id, line: `✗ Revert failed: ${msg}`, level: 'error', ts: Date.now() }],
+      }));
     } finally {
       setIsRollingBackStep(false);
     }

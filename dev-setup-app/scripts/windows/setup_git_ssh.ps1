@@ -33,9 +33,17 @@ fi
 
 Write-Host "`n==> Step 3: Configuring Git identity inside WSL..."
 
-# Try to get identity from Windows Git if available
-$winGitName = git config --global user.name 2>$null
-$winGitEmail = git config --global user.email 2>$null
+# Try to get identity from Windows Git if available (safe — Windows Git may not be installed yet)
+$winGitName = $null
+$winGitEmail = $null
+try {
+    if (Get-Command git -ErrorAction SilentlyContinue) {
+        $winGitName  = git config --global user.name  2>$null
+        $winGitEmail = git config --global user.email 2>$null
+    }
+} catch {
+    # Windows Git not in PATH — fall back to env vars or skip identity config
+}
 
 # Check if already configured in WSL
 $wslGitName = wsl -d $DistroName -- bash -c "git config --global user.name 2>/dev/null" 2>$null
