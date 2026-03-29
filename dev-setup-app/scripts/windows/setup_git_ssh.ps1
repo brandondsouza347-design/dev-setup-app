@@ -1,8 +1,16 @@
-# setup_git_ssh.ps1 — Configure Git identity and SSH keys inside WSL2
+﻿# setup_git_ssh.ps1 — Configure Git identity and SSH keys inside WSL2
 # Run as normal user
 
 $ErrorActionPreference = "Stop"
 $DistroName = "ERC"
+
+# Helper: strip Windows CR so bash inside WSL never sees \r\n line endings.
+# Pipes the cleaned script via stdin to avoid all -c quoting/CRLF issues.
+function Invoke-WslBash {
+    param([Parameter(Mandatory)][string]$Script)
+    ($Script -replace "`r`n", "`n" -replace "`r", "`n") | wsl -d $DistroName -- bash
+    if ($LASTEXITCODE -ne 0) { throw "WSL bash exited with code $LASTEXITCODE" }
+}
 
 Write-Host "==> Git & SSH Configuration" -ForegroundColor Cyan
 
@@ -20,7 +28,7 @@ Write-Host "✓ $DistroName is available"
 
 Write-Host "`n==> Step 2: Ensuring Git is installed in WSL..."
 
-wsl -d $DistroName -- bash -c @"
+Invoke-WslBash @"
 if ! command -v git &>/dev/null; then
     sudo apt-get update -q && sudo apt-get install -y git
     echo 'Git installed'
@@ -67,7 +75,7 @@ if ($wslGitName) {
         Write-Host "    wsl -d $DistroName -- git config --global user.name 'Your Name'" -ForegroundColor Cyan
         Write-Host "    wsl -d $DistroName -- git config --global user.email 'your@email.com'" -ForegroundColor Cyan
     } else {
-        wsl -d $DistroName -- bash -c @"
+        Invoke-WslBash @"
 git config --global user.name '$winGitName'
 git config --global user.email '$winGitEmail'
 git config --global core.autocrlf input
@@ -85,7 +93,7 @@ Write-Host "`n==> Step 4: Setting up SSH keys in WSL..."
 
 $wslEmail = wsl -d $DistroName -- bash -c "git config --global user.email 2>/dev/null" 2>$null
 
-wsl -d $DistroName -- bash -c @"
+Invoke-WslBash @"
 set -euo pipefail
 
 SSH_DIR="\$HOME/.ssh"
@@ -119,7 +127,7 @@ echo '------------------------------------------------------------'
 
 Write-Host "`n==> Step 5: Configuring SSH agent auto-start in WSL ~/.bashrc..."
 
-wsl -d $DistroName -- bash -c @"
+Invoke-WslBash @"
 MARKER='# SSH agent auto-start'
 if ! grep -q "\$MARKER" ~/.bashrc 2>/dev/null; then
     cat >> ~/.bashrc << 'BASHRC'
