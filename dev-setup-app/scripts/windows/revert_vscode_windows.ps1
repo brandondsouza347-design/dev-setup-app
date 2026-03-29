@@ -21,15 +21,15 @@ $CodePaths = @(
 )
 
 foreach ($path in $CodePaths) {
-    if (Test-Path $path -ErrorAction SilentlyContinue) {
+    if ($path -eq "code") {
+        if (Get-Command "code" -ErrorAction SilentlyContinue) {
+            $CodeCmd = "code"
+            break
+        }
+    } elseif (Test-Path $path -ErrorAction SilentlyContinue) {
         $CodeCmd = $path
         break
     }
-    try {
-        Get-Command $path -ErrorAction Stop | Out-Null
-        $CodeCmd = $path
-        break
-    } catch {}
 }
 
 if (-not $CodeCmd) {
@@ -81,41 +81,9 @@ if ($CodeCmd) {
     Write-Host "`n==> Step 2: Skipped (VS Code not found)"
 }
 
-# ─── 3. Uninstall WSL-side extensions ───────────────────────────────────────
+# ─── 3. Remove VS Code settings.json ────────────────────────────────────────
 
-if ($CodeCmd) {
-    Write-Host "`n==> Step 3: Uninstalling VS Code server extensions inside WSL..."
-
-    $wslDistroExists = $false
-    try {
-        $wslList = wsl --list --quiet 2>&1 | Out-String
-        if ($wslList -match $DistroName) { $wslDistroExists = $true }
-    } catch {}
-
-    if ($wslDistroExists) {
-        $wslExtensions = @(
-            "ms-python.python",
-            "ms-python.black-formatter",
-            "ms-python.pylint",
-            "dbaeumer.vscode-eslint",
-            "eamodio.gitlens"
-        )
-        foreach ($ext in $wslExtensions) {
-            try {
-                wsl -d $DistroName -- bash -c "code --uninstall-extension $ext --force 2>/dev/null || true"
-                Write-Host "   ✓ WSL: $ext"
-            } catch {
-                Write-Host "   - WSL skipped: $ext"
-            }
-        }
-    } else {
-        Write-Host "   ⚠ WSL distro '$DistroName' not found — skipping WSL extension removal" -ForegroundColor Yellow
-    }
-}
-
-# ─── 4. Remove VS Code settings.json ────────────────────────────────────────
-
-Write-Host "`n==> Step 4: Removing VS Code user settings..."
+Write-Host "`n==> Step 3: Removing VS Code user settings..."
 
 $SettingsFile = Join-Path $env:APPDATA "Code\User\settings.json"
 if (Test-Path $SettingsFile) {
@@ -125,9 +93,9 @@ if (Test-Path $SettingsFile) {
     Write-Host "   - settings.json not found — nothing to remove"
 }
 
-# ─── 5. Remove mcp.json (only if it matches our template) ───────────────────
+# ─── 4. Remove mcp.json (only if it matches our template) ───────────────────
 
-Write-Host "`n==> Step 5: Checking mcp.json..."
+Write-Host "`n==> Step 4: Checking mcp.json..."
 
 $McpFile = Join-Path $env:APPDATA "Code\User\mcp.json"
 if (Test-Path $McpFile) {

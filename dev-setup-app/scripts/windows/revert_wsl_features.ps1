@@ -53,8 +53,8 @@ if ($featuresDisabled) {
     Write-Host "  ⚠  RESTART REQUIRED" -ForegroundColor Yellow
     Write-Host "     Restart your PC to complete WSL feature removal." -ForegroundColor Yellow
     Write-Host "     After restart, WSL commands will no longer be available." -ForegroundColor Yellow
-    # Exit 1 so the sequence stops and the UI shows the restart message
-    exit 1
+    # Step succeeded — restart is required but this is not a failure
+    exit 0
 } else {
     Write-Host "`n✓ WSL features were already disabled — no restart needed" -ForegroundColor Green
 }

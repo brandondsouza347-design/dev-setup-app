@@ -7,6 +7,20 @@
 $ErrorActionPreference = "Stop"
 $DistroName = "ERC"
 
+# Helper: write bash snippet to a temp LF-only file and execute via WSL.
+# Avoids stdin-pipe CRLF re-introduction by PowerShell 5.1 on Windows.
+function Invoke-WslBash {
+    param([Parameter(Mandatory)][string]$Script)
+    $tmp = [System.IO.Path]::GetTempFileName()
+    $lf  = $Script.TrimStart("`r`n") -replace "`r`n", "`n" -replace "`r", "`n"
+    [System.IO.File]::WriteAllText($tmp, $lf, [System.Text.UTF8Encoding]::new($false))
+    $drive   = ($tmp[0]).ToString().ToLower()
+    $wslPath = "/mnt/$drive" + ($tmp.Substring(2) -replace '\\', '/')
+    wsl -d $DistroName -- bash $wslPath
+    Remove-Item $tmp -ErrorAction SilentlyContinue
+    if ($LASTEXITCODE -ne 0) { throw "WSL bash exited with code $LASTEXITCODE" }
+}
+
 Write-Host "==> Reverting Git & SSH Configuration" -ForegroundColor Cyan
 
 # ─── 1. Check distro is available ───────────────────────────────────────────
@@ -22,27 +36,25 @@ Write-Host "   ✓ $DistroName is available"
 # ─── 2. Remove Git global identity settings ─────────────────────────────────
 
 Write-Host "`n==> Step 2: Removing Git global identity from WSL..."
-wsl -d $DistroName -- bash -c @"
+Invoke-WslBash @"
 git config --global --unset user.name 2>/dev/null || true
 git config --global --unset user.email 2>/dev/null || true
 git config --global --unset core.autocrlf 2>/dev/null || true
 git config --global --unset core.eol 2>/dev/null || true
 git config --global --unset init.defaultBranch 2>/dev/null || true
 git config --global --unset pull.rebase 2>/dev/null || true
-echo '✓ Git global identity settings removed'
+echo 'Step 2 complete - Git global identity settings removed'
 "@
 
 # ─── 3. Remove SSH agent auto-start from ~/.bashrc ──────────────────────────
 
 Write-Host "`n==> Step 3: Removing SSH agent auto-start from WSL ~/.bashrc..."
-wsl -d $DistroName -- bash -c @"
-MARKER='# SSH agent auto-start'
-if grep -q "\$MARKER" ~/.bashrc 2>/dev/null; then
-    # Delete from the marker line through the closing fi line
-    sed -i '/# SSH agent auto-start/,/^fi$/d' ~/.bashrc
-    echo '✓ SSH agent auto-start block removed from ~/.bashrc'
+Invoke-WslBash @"
+if grep -qF '# SSH agent auto-start' ~/.bashrc 2>/dev/null; then
+    sed -i '/# SSH agent auto-start/,/^fi/d' ~/.bashrc
+    echo 'Step 3 complete - SSH agent auto-start block removed from ~/.bashrc'
 else
-    echo '✓ SSH agent auto-start not found in ~/.bashrc — already clean'
+    echo 'Step 3 complete - SSH agent auto-start not found in ~/.bashrc, already clean'
 fi
 "@
 

@@ -9,6 +9,19 @@
 $ErrorActionPreference = "Stop"
 $DistroName = "ERC"
 
+# Helper: write bash snippet to a temp LF-only file and execute via WSL.
+function Invoke-WslBash {
+    param([Parameter(Mandatory)][string]$Script)
+    $tmp = [System.IO.Path]::GetTempFileName()
+    $lf  = $Script.TrimStart("`r`n") -replace "`r`n", "`n" -replace "`r", "`n"
+    [System.IO.File]::WriteAllText($tmp, $lf, [System.Text.UTF8Encoding]::new($false))
+    $drive   = ($tmp[0]).ToString().ToLower()
+    $wslPath = "/mnt/$drive" + ($tmp.Substring(2) -replace '\\', '/')
+    wsl -d $DistroName -- bash $wslPath
+    Remove-Item $tmp -ErrorAction SilentlyContinue
+    if ($LASTEXITCODE -ne 0) { throw "WSL bash exited with code $LASTEXITCODE" }
+}
+
 Write-Host "==> Reverting WSL Network Configuration" -ForegroundColor Cyan
 
 # ─── 1. Check distro is available ───────────────────────────────────────────
@@ -32,27 +45,25 @@ if ($existingDistros) {
     # ─── 3. Remove generateResolvConf=false from /etc/wsl.conf ──────────────
 
     Write-Host "`n==> Step 3: Restoring /etc/wsl.conf..."
-    wsl -d $DistroName -- bash -c @"
+    Invoke-WslBash @"
 if [ -f /etc/wsl.conf ]; then
-    sudo sed -i '/^generateResolvConf\s*=/d' /etc/wsl.conf 2>/dev/null
-    # Remove empty [network] section
-    sudo sed -i '/^\[network\]\s*$/{N;/^\[network\]\s*\n\s*$/d}' /etc/wsl.conf 2>/dev/null || true
-    echo '✓ Step 3 complete — generateResolvConf line removed from /etc/wsl.conf'
+    sudo sed -i '/^generateResolvConf/d' /etc/wsl.conf 2>/dev/null || true
+    echo 'Step 3 complete - generateResolvConf removed from /etc/wsl.conf'
 else
-    echo '✓ Step 3 complete — /etc/wsl.conf does not exist, nothing to revert'
+    echo 'Step 3 complete - /etc/wsl.conf not found, nothing to revert'
 fi
 "@
 
     # ─── 4. Remove dev entries from WSL /etc/hosts ──────────────────────────
 
     Write-Host "`n==> Step 4: Removing dev hostnames from WSL /etc/hosts..."
-    wsl -d $DistroName -- bash -c @"
+    Invoke-WslBash @"
 if [ -f /etc/hosts ]; then
-    sudo sed -i '/erckinetic/d' /etc/hosts 2>/dev/null
-    sudo sed -i '/# Dev hostnames/d' /etc/hosts 2>/dev/null
-    echo '✓ Step 4 complete — dev hostnames removed from WSL /etc/hosts'
+    sudo sed -i '/erckinetic/d' /etc/hosts 2>/dev/null || true
+    sudo sed -i '/Dev hostnames/d' /etc/hosts 2>/dev/null || true
+    echo 'Step 4 complete - dev hostnames removed from WSL /etc/hosts'
 else
-    echo '✓ Step 4 complete — WSL /etc/hosts does not exist, nothing to revert'
+    echo 'Step 4 complete - WSL /etc/hosts not found, nothing to revert'
 fi
 "@
 }

@@ -67,7 +67,9 @@ $Extensions = @(
     "eamodio.gitlens",                          # GitLens
     "pkief.material-icon-theme",                # Material Icon Theme
     "cweijan.vscode-postgresql-client2",        # PostgreSQL Client
-    "liviuschera.noctis"                        # Noctis Theme
+    "ms-azuretools.vscode-docker",              # Docker
+    "gruntfuggly.todo-tree",                    # TODO Tree
+    "streetsidesoftware.code-spell-checker"     # Spell Checker
 )
 
 $installed = 0
@@ -101,28 +103,88 @@ $WSLPythonPath = "/home/ubuntu/.pyenv/versions/$VenvName/bin/python"
 
 $Settings = @"
 {
-    "editor.formatOnSave": true,
-    "editor.tabSize": 4,
-    "editor.insertSpaces": true,
-    "editor.rulers": [88, 120],
-    "editor.trimAutoWhitespace": true,
+    "aws.cloudformation.telemetry.enabled": false,
+    "aws.resources.enabledResources": [
+        "AWS::DynamoDB::GlobalTable",
+        "AWS::DynamoDB::Table"
+    ],
+    "atlascode.jira.enabled": true,
+    "atlascode.bitbucket.enabled": false,
+    "chat.useAgentSkills": true,
+    "chat.mcp.gallery.enabled": true,
+    "chat.agent.enabled": true,
+    "chat.instructionsFilesLocations": {
+        ".github/instructions": true,
+        ".claude/rules": true,
+        "~/.copilot/instructions": true,
+        "~/.claude/rules": true
+    },
+    "chat.viewSessions.orientation": "stacked",
+    "debug.console.closeOnEnd": true,
+    "debug.console.wordWrap": false,
+    "debug.breakpointsView.presentation": "tree",
+    "diffEditor.ignoreTrimWhitespace": false,
+    "diffEditor.hideUnchangedRegions.enabled": false,
+    "files.autoSave": "afterDelay",
     "files.trimTrailingWhitespace": true,
     "files.insertFinalNewline": true,
+    "git.autofetch": true,
+    "git.detectSubmodules": false,
+    "git.fetchOnPull": true,
+    "git.ignoreLegacyWarning": true,
+    "git.openRepositoryInParentFolders": "never",
+    "git.pruneOnFetch": true,
+    "git.rebaseWhenSync": true,
+    "git.untrackedChanges": "separate",
+    "git-graph.commitDetailsView.autoCenter": true,
+    "gitlens.blame.compact": false,
+    "gitlens.blame.format": "`${date} `${author}",
+    "gitlens.blame.ignoreWhitespace": true,
+    "gitlens.codeLens.scopes": ["document"],
+    "gitlens.currentLine.format": "`${author}, `${agoOrDate} • `${message}",
+    "gitlens.currentLine.pullRequests.enabled": false,
+    "gitlens.defaultDateFormat": "MM/DD/YY",
+    "gitlens.defaultDateShortFormat": "MMM D, YYYY",
+    "gitlens.defaultDateSource": "committed",
+    "gitlens.defaultTimeFormat": "h:mma",
+    "gitlens.graph.minimap.enabled": false,
+    "gitlens.graph.showDetailsView": false,
+    "gitlens.graph.sidebar.enabled": false,
+    "gitlens.graph.statusBar.enabled": false,
+    "gitlens.hovers.currentLine.over": "line",
+    "gitlens.statusBar.format": "`${author}, `${agoOrDate}",
+    "gitlens.statusBar.pullRequests.enabled": false,
+    "gitlens.views.commitDetails.autolinks.enabled": true,
+    "gitlens.views.commitDetails.files.layout": "tree",
+    "gitlens.views.commits.files.layout": "list",
+    "gitlens.ai.model": "vscode",
+    "gitlens.ai.vscode.model": "copilot:gpt-4.1",
+    "github.copilot.nextEditSuggestions.enabled": true,
+    "grunt.autoDetect": "on",
+    "merge-conflict.autoNavigateNextConflict.enabled": true,
+    "pylint.importStrategy": "fromEnvironment",
+    "redhat.telemetry.enabled": false,
+    "remote.autoForwardPortsSource": "hybrid",
+    "rest-client.previewOption": "exchange",
+    "task.allowAutomaticTasks": "on",
+    "terminal.integrated.cwd": "`${workspaceFolder}",
     "terminal.integrated.defaultProfile.windows": "ERC (WSL)",
+    "terminal.integrated.fontFamily": "UbuntuMono Nerd Font",
+    "terminal.integrated.scrollback": 100000,
+    "terminal.integrated.smoothScrolling": true,
+    "terminal.integrated.rightClickBehavior": "default",
+    "window.restoreWindows": "none",
+    "window.zoomLevel": 0.5,
+    "workbench.iconTheme": "material-icon-theme",
+    "workbench.list.smoothScrolling": true,
     "python.defaultInterpreterPath": "$WSLPythonPath",
     "[python]": {
-        "editor.defaultFormatter": "ms-python.black-formatter"
+        "editor.defaultFormatter": "ms-python.black-formatter",
+        "diffEditor.ignoreTrimWhitespace": true
     },
     "black-formatter.args": ["--line-length", "88"],
     "pylint.enabled": true,
-    "eslint.enable": true,
-    "git.autofetch": true,
-    "git.confirmSync": false,
-    "remote.WSL.fileWatcher.polling": true,
-    "workbench.colorTheme": "Noctis",
-    "workbench.iconTheme": "material-icon-theme",
-    "window.zoomLevel": 0,
-    "task.allowAutomaticTasks": "on"
+    "eslint.enable": true
 }
 "@
 
