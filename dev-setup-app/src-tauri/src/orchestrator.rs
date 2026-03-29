@@ -532,7 +532,7 @@ fn build_script_command(
         "import_wsl_tar"=> ("windows", "import_wsl_tar.ps1",      "powershell", vec![]),
         "wsl_network"   => ("windows", "setup_wsl_network.ps1",   "powershell", vec![]),
         "vscode_windows"=> ("windows", "setup_vscode_windows.ps1","powershell", vec![]),
-        "git_ssh_windows"=>("windows","setup_git_ssh.ps1",        "powershell", vec![]),
+        "git_ssh_windows"=>("windows","setup_git_ssh.sh",         "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
         "pyenv_wsl"       => ("windows", "setup_pyenv_wsl.sh",         "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
         "nvm_wsl"          => ("windows", "setup_nvm_wsl.sh",           "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
         "ubuntu_user_wsl"  => ("windows", "setup_ubuntu_user_wsl.sh",   "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),

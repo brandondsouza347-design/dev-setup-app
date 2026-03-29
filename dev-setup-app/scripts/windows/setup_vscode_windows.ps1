@@ -18,15 +18,16 @@ $CodePaths = @(
 )
 
 foreach ($path in $CodePaths) {
-    if (Test-Path $path -ErrorAction SilentlyContinue) {
+    if ($path -eq "code") {
+        # PATH lookup — only for the plain 'code' fallback
+        if (Get-Command "code" -ErrorAction SilentlyContinue) {
+            $CodeCmd = "code"
+            break
+        }
+    } elseif (Test-Path $path -ErrorAction SilentlyContinue) {
         $CodeCmd = $path
         break
     }
-    try {
-        Get-Command $path -ErrorAction Stop | Out-Null
-        $CodeCmd = $path
-        break
-    } catch {}
 }
 
 if (-not $CodeCmd) {
@@ -43,7 +44,6 @@ if (-not $CodeCmd) {
 }
 
 Write-Host "✓ VS Code found: $CodeCmd"
-& $CodeCmd --version | Select-Object -First 1
 
 # ─── 2. Install extensions ──────────────────────────────────────────────────
 
