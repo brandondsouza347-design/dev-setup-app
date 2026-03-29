@@ -23,9 +23,10 @@ Write-Host "`n==> Step 2: Ensuring Git is installed in WSL..."
 wsl -d $DistroName -- bash -c @"
 if ! command -v git &>/dev/null; then
     sudo apt-get update -q && sudo apt-get install -y git
-    echo '✓ Git installed'
+    echo 'Git installed'
 else
-    echo "✓ Git already installed: \$(git --version)"
+    echo 'Git already installed'
+    git --version
 fi
 "@
 
