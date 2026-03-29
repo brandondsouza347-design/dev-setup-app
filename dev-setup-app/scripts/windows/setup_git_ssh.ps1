@@ -4,11 +4,17 @@
 $ErrorActionPreference = "Stop"
 $DistroName = "ERC"
 
-# Helper: strip Windows CR so bash inside WSL never sees \r\n line endings.
-# Pipes the cleaned script via stdin to avoid all -c quoting/CRLF issues.
+# Helper: write bash snippet to a temp LF-only file and execute via WSL.
+# Avoids stdin-pipe CRLF re-introduction by PowerShell 5.1 on Windows.
 function Invoke-WslBash {
     param([Parameter(Mandatory)][string]$Script)
-    ($Script -replace "`r`n", "`n" -replace "`r", "`n") | wsl -d $DistroName -- bash
+    $tmp = [System.IO.Path]::GetTempFileName()
+    $lf  = $Script.TrimStart("`r`n") -replace "`r`n", "`n" -replace "`r", "`n"
+    [System.IO.File]::WriteAllText($tmp, $lf, [System.Text.UTF8Encoding]::new($false))
+    $drive  = ($tmp[0]).ToString().ToLower()
+    $wslPath = "/mnt/$drive" + ($tmp.Substring(2) -replace '\\', '/')
+    wsl -d $DistroName -- bash $wslPath
+    Remove-Item $tmp -ErrorAction SilentlyContinue
     if ($LASTEXITCODE -ne 0) { throw "WSL bash exited with code $LASTEXITCODE" }
 }
 
