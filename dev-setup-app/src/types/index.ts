@@ -54,6 +54,8 @@ export interface UserConfig {
   venv_name: string;
   skip_already_installed: boolean;
   openvpn_config_path: string | null;
+  git_name: string | null;
+  git_email: string | null;
 }
 
 export interface FullState {

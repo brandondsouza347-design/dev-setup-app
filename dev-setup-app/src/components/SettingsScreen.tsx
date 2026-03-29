@@ -167,6 +167,30 @@ export const SettingsScreen: React.FC<Props> = ({ config, osInfo, onUpdate, onSa
           </Section>
         )}
 
+        {/* Git Identity (Windows only) */}
+        {isWindows && (
+          <Section title="Git Identity">
+            <Field label="Full Name" hint="Used for git config user.name inside WSL">
+              <input
+                type="text"
+                value={config.git_name ?? ''}
+                onChange={(e) => update('git_name', e.target.value || null)}
+                className="input"
+                placeholder="Jane Smith"
+              />
+            </Field>
+            <Field label="Email Address" hint="Used for git config user.email and SSH key comment">
+              <input
+                type="email"
+                value={config.git_email ?? ''}
+                onChange={(e) => update('git_email', e.target.value || null)}
+                className="input"
+                placeholder="jane@example.com"
+              />
+            </Field>
+          </Section>
+        )}
+
         {/* VPN (Windows only) */}
         {isWindows && (
           <Section title="VPN Configuration">

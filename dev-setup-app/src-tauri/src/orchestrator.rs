@@ -625,6 +625,12 @@ fn build_env(config: &UserConfig) -> Vec<(String, String)> {
     if let Some(ref openvpn_path) = config.openvpn_config_path {
         env.push(("SETUP_OPENVPN_CONFIG_PATH".to_string(), openvpn_path.clone()));
     }
+    if let Some(ref git_name) = config.git_name {
+        env.push(("SETUP_GIT_NAME".to_string(), git_name.clone()));
+    }
+    if let Some(ref git_email) = config.git_email {
+        env.push(("SETUP_GIT_EMAIL".to_string(), git_email.clone()));
+    }
     env
 }
 

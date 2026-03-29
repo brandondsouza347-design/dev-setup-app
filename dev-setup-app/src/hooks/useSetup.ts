@@ -70,6 +70,8 @@ export function useSetup(): UseSetupReturn {
     venv_name: 'erc',
     skip_already_installed: true,
     openvpn_config_path: null,
+    git_name: null,
+    git_email: null,
   });
   const [prereqChecks, setPrereqChecks] = useState<PrereqCheck[]>([]);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);

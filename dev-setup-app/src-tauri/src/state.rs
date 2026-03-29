@@ -52,6 +52,8 @@ pub struct UserConfig {
     pub venv_name: String,
     pub skip_already_installed: bool,
     pub openvpn_config_path: Option<String>,
+    pub git_name: Option<String>,
+    pub git_email: Option<String>,
 }
 
 impl Default for UserConfig {
@@ -66,6 +68,8 @@ impl Default for UserConfig {
             venv_name: "erc".to_string(),
             skip_already_installed: true,
             openvpn_config_path: None,
+            git_name: None,
+            git_email: None,
         }
     }
 }
