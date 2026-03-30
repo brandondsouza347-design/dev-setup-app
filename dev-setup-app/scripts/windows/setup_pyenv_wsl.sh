@@ -8,6 +8,9 @@ VENV_NAME="${SETUP_VENV_NAME:-erc}"
 SKIP_INSTALLED="${SETUP_SKIP_INSTALLED:-true}"
 SHELL_RC="$HOME/.bashrc"
 
+# Prevent apt-get from prompting for timezone/keyboard etc.
+export DEBIAN_FRONTEND=noninteractive
+
 echo "==> setup_pyenv_wsl: Python=$PYTHON_VERSION  venv=$VENV_NAME"
 
 # ─── Helper: idempotent line append ─────────────────────────────────────────
@@ -24,14 +27,43 @@ add_to_bashrc() {
     fi
 }
 
+# ─── Activate pyenv if already installed (needed for version checks) ─────────
+export PYENV_ROOT="$HOME/.pyenv"
+export PATH="$PYENV_ROOT/bin:$PATH"
+if command -v pyenv &>/dev/null; then
+    eval "$(pyenv init --path)" 2>/dev/null || true
+    eval "$(pyenv init -)"       2>/dev/null || true
+    eval "$(pyenv virtualenv-init -)" 2>/dev/null || true
+fi
+
 # ─── 1. System build deps ────────────────────────────────────────────────────
 echo "==> Step 1: Installing build dependencies..."
-sudo apt-get update -q
-sudo apt-get install -y -q \
-    build-essential libssl-dev zlib1g-dev libbz2-dev \
-    libreadline-dev libsqlite3-dev curl libncursesw5-dev \
-    xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev git
-echo "✓ Build dependencies installed"
+
+# Check if the key build tools are already present to avoid a slow apt run
+# when everything is already installed (e.g. re-running on an existing distro).
+_NEED_APT=false
+for _pkg in gcc make libssl-dev zlib1g-dev; do
+    if ! dpkg -s "$_pkg" &>/dev/null; then
+        _NEED_APT=true
+        break
+    fi
+done
+
+if [ "$_NEED_APT" = "true" ]; then
+    sudo -n apt-get update -q 2>/dev/null || apt-get update -q
+    sudo -n apt-get install -y -q \
+        build-essential libssl-dev zlib1g-dev libbz2-dev \
+        libreadline-dev libsqlite3-dev curl libncursesw5-dev \
+        xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev git \
+    2>/dev/null || \
+    apt-get install -y -q \
+        build-essential libssl-dev zlib1g-dev libbz2-dev \
+        libreadline-dev libsqlite3-dev curl libncursesw5-dev \
+        xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev git
+    echo "✓ Build dependencies installed"
+else
+    echo "✓ Build dependencies already installed — skipping apt"
+fi
 
 # ─── 2. Install pyenv ───────────────────────────────────────────────────────
 echo "==> Step 2: Installing pyenv via curl..."
@@ -60,16 +92,17 @@ echo "✓ pyenv shell integration configured"
 
 # ─── 4. Install Python ──────────────────────────────────────────────────────
 echo "==> Step 4: Installing Python $PYTHON_VERSION..."
-if pyenv versions --bare 2>/dev/null | grep -qx "$PYTHON_VERSION"; then
+if [ -d "$HOME/.pyenv/versions/$PYTHON_VERSION" ]; then
     echo "✓ Python $PYTHON_VERSION already installed"
 else
-    pyenv install "$PYTHON_VERSION"
+    # --skip-existing (-s) never prompts even if the version dir exists.
+    pyenv install --skip-existing "$PYTHON_VERSION"
     echo "✓ Python $PYTHON_VERSION installed"
 fi
 
 # ─── 5. Create virtualenv ───────────────────────────────────────────────────
 echo "==> Step 5: Creating virtualenv '$VENV_NAME'..."
-if pyenv virtualenvs --bare 2>/dev/null | grep -qx "$VENV_NAME"; then
+if [ -d "$HOME/.pyenv/versions/$VENV_NAME" ]; then
     if [ "$SKIP_INSTALLED" = "true" ]; then
         echo "✓ Virtualenv '$VENV_NAME' already exists — skipping"
     else
