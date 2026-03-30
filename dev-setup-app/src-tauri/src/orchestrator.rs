@@ -1,9 +1,10 @@
 // orchestrator.rs — Step definitions and script execution engine
+use crate::admin_agent::{execute_via_agent, AdminAgentState, ADMIN_STEP_IDS};
 use crate::state::UserConfig;
 use serde::{Deserialize, Serialize};
 use std::process::Stdio;
 use std::time::Instant;
-use tauri::{Emitter, WebviewWindow};
+use tauri::{Emitter, Manager, WebviewWindow};
 use tokio::sync::mpsc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -411,6 +412,7 @@ fn script_path(app_handle: &tauri::AppHandle, script_name: &str) -> Result<std::
 }
 
 /// Execute a shell script and stream output line-by-line to the frontend via events.
+/// Admin-required steps are routed through the elevated admin agent when available.
 pub async fn execute_script(
     window: WebviewWindow,
     app_handle: tauri::AppHandle,
@@ -418,6 +420,14 @@ pub async fn execute_script(
     config: &UserConfig,
 ) -> Result<Vec<String>, String> {
     let start = Instant::now();
+
+    // Route admin-required steps through the elevated named-pipe agent
+    if ADMIN_STEP_IDS.contains(&step.id.as_str()) {
+        let agent_state = app_handle
+            .try_state::<AdminAgentState>()
+            .ok_or_else(|| "AdminAgentState not managed".to_string())?;
+        return execute_via_agent(&window, &app_handle, step, config, &agent_state).await;
+    }
 
     let (program, script_file, args) = build_script_command(step, config, &app_handle)?;
 

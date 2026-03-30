@@ -1,16 +1,33 @@
 // components/PrereqScreen.tsx — Pre-flight checks before setup
 import React, { useEffect } from 'react';
-import { CheckCircle, XCircle, RefreshCw, ChevronRight, ChevronLeft } from 'lucide-react';
-import type { PrereqCheck, WizardPage } from '../types';
+import { CheckCircle, XCircle, RefreshCw, ChevronRight, ChevronLeft, ShieldCheck, ShieldAlert, Loader2, ShieldOff } from 'lucide-react';
+import type { PrereqCheck, WizardPage, AdminAgentStatus } from '../types';
 
 interface Props {
   checks: PrereqCheck[];
   onCheck: () => Promise<void>;
   onNext: (page: WizardPage) => void;
   onBack: () => void;
+  isWindows: boolean;
+  adminAgentStatus: AdminAgentStatus;
+  adminAgentError: string | null;
+  adminAgentLogs: string[];
+  onRequestAdminAgent: () => Promise<void>;
+  onShutdownAdminAgent: () => Promise<void>;
 }
 
-export const PrereqScreen: React.FC<Props> = ({ checks, onCheck, onNext, onBack }) => {
+export const PrereqScreen: React.FC<Props> = ({
+  checks,
+  onCheck,
+  onNext,
+  onBack,
+  isWindows,
+  adminAgentStatus,
+  adminAgentError,
+  adminAgentLogs,
+  onRequestAdminAgent,
+  onShutdownAdminAgent,
+}) => {
   const [checking, setChecking] = React.useState(false);
 
   useEffect(() => {
@@ -71,6 +88,86 @@ export const PrereqScreen: React.FC<Props> = ({ checks, onCheck, onNext, onBack 
           </div>
         ))}
       </div>
+
+      {/* Admin Agent card — Windows only */}
+      {isWindows && (
+        <div className={`p-4 rounded-lg border ${
+          adminAgentStatus === 'ready'
+            ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+            : adminAgentStatus === 'error'
+            ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+            : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+        }`}>
+          <div className="flex items-start gap-3">
+            {adminAgentStatus === 'ready' && <ShieldCheck className="w-5 h-5 text-green-500 mt-0.5 shrink-0" />}
+            {adminAgentStatus === 'error'  && <ShieldAlert className="w-5 h-5 text-red-500 mt-0.5 shrink-0" />}
+            {adminAgentStatus === 'requesting' && <Loader2 className="w-5 h-5 text-blue-500 mt-0.5 shrink-0 animate-spin" />}
+            {adminAgentStatus === 'idle'   && <ShieldOff className="w-5 h-5 text-blue-400 mt-0.5 shrink-0" />}
+            <div className="flex-1 min-w-0">
+              <div className="font-medium text-gray-900 dark:text-white">Admin Privileges for WSL Steps</div>
+              {adminAgentStatus === 'idle' && (
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                  6 steps (Enable WSL, WSL Network, Hosts File and their revert equivalents) require elevation.
+                  Click below to open a password prompt for <strong>powershell.exe</strong> — this is a trusted
+                  Microsoft-signed binary and goes through the standard password flow, not the IT-approval queue.
+                </p>
+              )}
+              {adminAgentStatus === 'requesting' && (
+                <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
+                  Waiting for the elevation dialog… Enter your password in the <strong>Elevate Trusted</strong> popup, then wait for this to turn green.
+                </p>
+              )}
+              {adminAgentStatus === 'ready' && (
+                <p className="text-sm text-green-700 dark:text-green-300 mt-1">
+                  Admin steps enabled — WSL enablement, network config, and hosts file steps will run elevated automatically.
+                </p>
+              )}
+              {adminAgentStatus === 'error' && (
+                <pre className="text-xs text-red-700 dark:text-red-300 mt-1 whitespace-pre-wrap break-words max-h-40 overflow-y-auto font-mono bg-red-100 dark:bg-red-900/30 rounded p-2">
+                  {adminAgentError ?? 'Failed to connect to the admin agent.'}
+                </pre>
+              )}
+              {/* Live progress log — shown while requesting or on error */}
+              {(adminAgentStatus === 'requesting' || adminAgentStatus === 'error') && adminAgentLogs.length > 0 && (
+                <div className="mt-2 max-h-32 overflow-y-auto rounded bg-black/5 dark:bg-white/5 p-2">
+                  {adminAgentLogs.map((line, i) => (
+                    <div key={i} className="text-xs font-mono text-gray-700 dark:text-gray-300 leading-5">{line}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="shrink-0">
+              {adminAgentStatus === 'idle' && (
+                <button
+                  onClick={onRequestAdminAgent}
+                  className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
+                >
+                  Enable Admin Steps
+                </button>
+              )}
+              {adminAgentStatus === 'requesting' && (
+                <span className="text-sm text-blue-600 dark:text-blue-400 font-medium">Connecting…</span>
+              )}
+              {adminAgentStatus === 'ready' && (
+                <button
+                  onClick={onShutdownAdminAgent}
+                  className="px-3 py-1.5 text-sm border border-green-400 text-green-700 dark:text-green-300 hover:bg-green-100 dark:hover:bg-green-900/40 rounded-lg transition-colors"
+                >
+                  Disconnect
+                </button>
+              )}
+              {adminAgentStatus === 'error' && (
+                <button
+                  onClick={onRequestAdminAgent}
+                  className="px-3 py-1.5 text-sm bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg transition-colors"
+                >
+                  Retry
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Warning for failures */}
       {hasFailures && (

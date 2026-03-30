@@ -43,6 +43,12 @@ function App() {
               onCheck={setup.runPrereqCheck}
               onNext={setup.setPage}
               onBack={() => setup.setPage('welcome')}
+              isWindows={setup.osInfo?.os === 'windows'}
+              adminAgentStatus={setup.adminAgentStatus}
+              adminAgentError={setup.adminAgentError}
+              adminAgentLogs={setup.adminAgentLogs}
+              onRequestAdminAgent={setup.requestAdminAgent}
+              onShutdownAdminAgent={setup.shutdownAdminAgent}
             />
           </div>
         )}

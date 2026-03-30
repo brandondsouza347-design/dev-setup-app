@@ -27,41 +27,34 @@ Write-Host "✓ Windows version is compatible with WSL2"
 
 Write-Host "`n==> Step 2: Checking CPU virtualisation support (required for WSL2)..."
 try {
-    # Get-CimInstance is the modern replacement for Get-WmiObject (deprecated on Win11)
-    # and works identically on both Windows 10 and Windows 11.
-    $cpu = Get-CimInstance -ClassName Win32_Processor | Select-Object -First 1
-    Write-Host "   CPU: $($cpu.Name)"
-    $virtEnabled = $cpu.VirtualizationFirmwareEnabled
-    Write-Host "   Virtualisation firmware enabled: $virtEnabled"
+    # If VirtualMachinePlatform is already enabled, virtualisation is definitely
+    # working — skip the WMI firmware check entirely.  The WMI property
+    # VirtualizationFirmwareEnabled is known to return False on machines where
+    # Hyper-V, Credential Guard, or VBS is active even when virtualisation is
+    # fully operational.  Task Manager → Performance → CPU is the reliable indicator.
+    $vmPlatform = Get-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform -ErrorAction SilentlyContinue
+    if ($vmPlatform -and $vmPlatform.State -eq "Enabled") {
+        Write-Host "✓ Virtual Machine Platform is already enabled — virtualisation is available"
+    } else {
+        $cpu = Get-CimInstance -ClassName Win32_Processor | Select-Object -First 1
+        Write-Host "   CPU: $($cpu.Name)"
+        $virtEnabled = $cpu.VirtualizationFirmwareEnabled
+        Write-Host "   Virtualisation firmware enabled (WMI): $virtEnabled"
 
-    if ($virtEnabled -eq $false) {
-        Write-Host ""
-        Write-Host "ERROR: CPU virtualisation is DISABLED in your BIOS/UEFI firmware." -ForegroundColor Red
-        Write-Host "       WSL2 requires hardware virtualisation to run." -ForegroundColor Red
-        Write-Host ""
-
-        # Detect Intel vs AMD and give specific BIOS instructions
-        if ($cpu.Name -match "Intel") {
-            Write-Host "  Your CPU is Intel. Enable Intel Virtualization Technology (VT-x):" -ForegroundColor Yellow
-            Write-Host "    1. Restart your PC and enter BIOS/UEFI (usually F2 or Del on boot)" -ForegroundColor Yellow
-            Write-Host "    2. Go to: Advanced → CPU Configuration" -ForegroundColor Yellow
-            Write-Host "    3. Set 'Intel Virtualization Technology' to: Enabled" -ForegroundColor Yellow
-            Write-Host "    4. Save and exit (usually F10), then re-run this installer" -ForegroundColor Yellow
+        if ($virtEnabled -eq $false) {
+            # WMI returns False on Hyper-V/VBS machines even when VT active.
+            # Treat as a warning, not a hard failure — if WSL features enable
+            # successfully below, virtualisation was working.
+            Write-Host "⚠ WMI reports VirtualizationFirmwareEnabled = False." -ForegroundColor Yellow
+            Write-Host "  This is a known false negative on machines with Hyper-V or VBS enabled." -ForegroundColor Yellow
+            Write-Host "  Continuing — if WSL2 fails to start after reboot, verify in Task Manager:" -ForegroundColor Yellow
+            Write-Host "    Task Manager → Performance → CPU → Virtualisation: Enabled" -ForegroundColor Yellow
         } else {
-            Write-Host "  Your CPU is AMD. Enable SVM Mode:" -ForegroundColor Yellow
-            Write-Host "    1. Restart your PC and enter BIOS/UEFI (usually Del or F2 on boot)" -ForegroundColor Yellow
-            Write-Host "    2. Go to: Advanced → CPU Configuration (or OC / Overclocking)" -ForegroundColor Yellow
-            Write-Host "    3. Set 'SVM Mode' to: Enabled" -ForegroundColor Yellow
-            Write-Host "    4. Save and exit (usually F10), then re-run this installer" -ForegroundColor Yellow
+            Write-Host "✓ CPU virtualisation is enabled"
         }
-        Write-Host ""
-        Write-Host "  After reboot, verify: Task Manager → Performance → CPU → Virtualisation: Enabled" -ForegroundColor Cyan
-        exit 1
     }
-    Write-Host "✓ CPU virtualisation is enabled"
 } catch {
     Write-Host "   ⚠ Could not query CPU virtualisation status — continuing" -ForegroundColor Yellow
-    Write-Host "     After reboot verify: Task Manager → Performance → CPU → Virtualisation: Enabled" -ForegroundColor Yellow
 }
 
 # ─── 3. Enable WSL feature ─────────────────────────────────────────────────────

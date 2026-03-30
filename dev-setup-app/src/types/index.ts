@@ -102,3 +102,5 @@ export type WizardPage =
   | 'progress'
   | 'complete'
   | 'revert';
+
+export type AdminAgentStatus = 'idle' | 'requesting' | 'ready' | 'error';

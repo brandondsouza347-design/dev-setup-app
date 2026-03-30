@@ -1,4 +1,5 @@
 fn main() {
+    println!("cargo:rerun-if-changed=../scripts/windows/admin_agent.ps1");
     let mut attrs = tauri_build::Attributes::new();
     #[cfg(target_os = "windows")]
     {

@@ -14,6 +14,7 @@ import type {
   StepStatusEvent,
   StepStatus,
   WizardPage,
+  AdminAgentStatus,
 } from '../types';
 
 interface UseSetupReturn {
@@ -35,6 +36,10 @@ interface UseSetupReturn {
   revertResults: Record<string, StepResult>;
   isReverting: boolean;
   revertComplete: boolean;
+  // Admin agent
+  adminAgentStatus: AdminAgentStatus;
+  adminAgentError: string | null;
+  adminAgentLogs: string[];
 
   // Actions
   setPage: (p: WizardPage) => void;
@@ -52,6 +57,9 @@ interface UseSetupReturn {
   startRevert: () => Promise<void>;
   retryRevertStep: (id: string) => Promise<void>;
   resetRevert: () => void;
+  // Admin agent actions
+  requestAdminAgent: () => Promise<void>;
+  shutdownAdminAgent: () => Promise<void>;
 }
 
 export function useSetup(): UseSetupReturn {
@@ -80,7 +88,10 @@ export function useSetup(): UseSetupReturn {
   const [isRunning, setIsRunning] = useState(false);
   const [isRollingBackStep, setIsRollingBackStep] = useState(false);
 
-  // Revert state
+  // Admin agent state
+  const [adminAgentStatus, setAdminAgentStatus] = useState<AdminAgentStatus>('idle');
+  const [adminAgentError, setAdminAgentError] = useState<string | null>(null);
+  const [adminAgentLogs, setAdminAgentLogs] = useState<string[]>([]);
   const [revertSteps, setRevertSteps] = useState<SetupStep[]>([]);
   const [revertResults, setRevertResults] = useState<Record<string, StepResult>>({});
   const [isReverting, setIsReverting] = useState(false);
@@ -219,7 +230,12 @@ export function useSetup(): UseSetupReturn {
         setIsReverting(false);
       });
 
-      unlistenRefs.current = [unlistenLog, unlistenStatus, unlistenComplete, unlistenRevertComplete];
+      const unlistenAgentLog = await listen<{ line: string; level: string }>('admin_agent_log', (event) => {
+        if (!mounted) return;
+        setAdminAgentLogs((prev) => [...prev, event.payload.line]);
+      });
+
+      unlistenRefs.current = [unlistenLog, unlistenStatus, unlistenComplete, unlistenRevertComplete, unlistenAgentLog];
     };
 
     setupListeners();
@@ -357,6 +373,26 @@ export function useSetup(): UseSetupReturn {
     setIsReverting(false);
   }, []);
 
+  const requestAdminAgent = useCallback(async () => {
+    setAdminAgentStatus('requesting');
+    setAdminAgentError(null);
+    setAdminAgentLogs([]);
+    try {
+      await invoke('request_admin_agent');
+      setAdminAgentStatus('ready');
+    } catch (e) {
+      const msg = typeof e === 'string' ? e : (e as any)?.message ?? String(e);
+      setAdminAgentStatus('error');
+      setAdminAgentError(msg);
+    }
+  }, []);
+
+  const shutdownAdminAgent = useCallback(async () => {
+    await invoke('shutdown_admin_agent');
+    setAdminAgentStatus('idle');
+    setAdminAgentError(null);
+  }, []);
+
   return {
     osInfo,
     steps,
@@ -388,5 +424,10 @@ export function useSetup(): UseSetupReturn {
     startRevert,
     retryRevertStep,
     resetRevert,
+    adminAgentStatus,
+    adminAgentError,
+    adminAgentLogs,
+    requestAdminAgent,
+    shutdownAdminAgent,
   };
 }

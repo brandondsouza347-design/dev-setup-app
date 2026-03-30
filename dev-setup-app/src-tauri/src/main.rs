@@ -1,6 +1,7 @@
 // main.rs — Entry point for the Tauri application
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod admin_agent;
 mod commands;
 mod orchestrator;
 mod state;
@@ -21,6 +22,7 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .manage(Mutex::new(AppState::default()))
+        .manage(admin_agent::AdminAgentState::new())
         .invoke_handler(tauri::generate_handler![
             commands::detect_os,
             commands::get_setup_steps,
@@ -38,6 +40,9 @@ fn main() {
             commands::save_config,
             commands::get_revert_steps,
             commands::start_revert,
+            commands::request_admin_agent,
+            commands::is_admin_agent_ready,
+            commands::shutdown_admin_agent,
         ])
         .setup(|_app| {
             log::info!(

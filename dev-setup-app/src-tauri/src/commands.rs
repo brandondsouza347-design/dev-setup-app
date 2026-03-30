@@ -665,6 +665,7 @@ fn check_disk_space() -> PrereqCheck {
 fn check_admin_rights() -> PrereqCheck {
     #[cfg(target_os = "windows")]
     {
+        use std::os::windows::process::CommandExt;
         let is_admin = std::process::Command::new("powershell")
             .args([
                 "-NoProfile",
@@ -672,6 +673,7 @@ fn check_admin_rights() -> PrereqCheck {
                 "-Command",
                 "[Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)",
             ])
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW — suppress console flash
             .output()
             .ok()
             .and_then(|o| String::from_utf8(o.stdout).ok())
@@ -684,7 +686,7 @@ fn check_admin_rights() -> PrereqCheck {
             message: if is_admin {
                 "Running as Administrator".to_string()
             } else {
-                "Not running as Administrator \u{2014} WSL enablement requires admin. Right-click the app and select 'Run as administrator'.".to_string()
+                "Not running as Administrator — use the 'Enable Admin Steps' button below to grant elevated access for WSL steps.".to_string()
             },
         };
     }
@@ -749,6 +751,39 @@ pub fn save_config(
         git_name: input.git_name,
         git_email: input.git_email,
     };
+    Ok(())
+}
+
+// ─── Admin Agent Commands ────────────────────────────────────────────────────
+
+/// Spawns the elevated PowerShell admin agent via Start-Process -Verb RunAs.
+/// Triggers the corporate "Elevate Trusted" dialog for powershell.exe.
+/// Emits "admin_agent_log" events to the window during the connection process.
+#[tauri::command]
+pub async fn request_admin_agent(
+    window: WebviewWindow,
+    app_handle: AppHandle,
+    agent_state: State<'_, crate::admin_agent::AdminAgentState>,
+) -> Result<(), String> {
+    log::info!("request_admin_agent: initiating elevated admin agent...");
+    crate::admin_agent::spawn_admin_agent(&window, &app_handle, &agent_state).await
+}
+
+/// Returns true if the admin agent is connected and ready to execute steps.
+#[tauri::command]
+pub fn is_admin_agent_ready(
+    agent_state: State<'_, crate::admin_agent::AdminAgentState>,
+) -> bool {
+    agent_state.is_ready()
+}
+
+/// Sends a shutdown command to the admin agent and clears ready state.
+#[tauri::command]
+pub async fn shutdown_admin_agent(
+    agent_state: State<'_, crate::admin_agent::AdminAgentState>,
+) -> Result<(), String> {
+    log::info!("shutdown_admin_agent: shutting down admin agent...");
+    crate::admin_agent::shutdown_agent(&agent_state).await;
     Ok(())
 }
 
