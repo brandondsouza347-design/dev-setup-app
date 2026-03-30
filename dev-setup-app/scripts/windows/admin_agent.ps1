@@ -108,7 +108,9 @@ while ($true) {
         }
 
         # Write completion signal then remove the command file
-        "{`"done`":true,`"code`":$exitCode}" | Out-File -FilePath $doneFile -Encoding UTF8 -Force
+        # Use ASCII encoding — the content is pure ASCII and Out-File -Encoding UTF8
+        # in PowerShell 5.x adds a UTF-8 BOM which breaks serde_json parsing in Rust.
+        "{`"done`":true,`"code`":$exitCode}" | Out-File -FilePath $doneFile -Encoding ASCII -Force
         Write-Log "Step '$stepId' finished (exit code $exitCode)"
         Remove-Item -LiteralPath $f.FullName -Force -ErrorAction SilentlyContinue
     }

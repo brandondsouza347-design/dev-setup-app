@@ -393,7 +393,9 @@ pub async fn execute_via_agent(
                     emit_log(window, &step_id, &tail, lvl);
                 }
                 let done_raw = std::fs::read_to_string(&done_file).unwrap_or_default();
-                let code: i64 = serde_json::from_str::<serde_json::Value>(&done_raw)
+                // Strip UTF-8 BOM if present (PowerShell 5.x Out-File -Encoding UTF8 adds it)
+                let done_raw = done_raw.trim_start_matches('\u{feff}');
+                let code: i64 = serde_json::from_str::<serde_json::Value>(done_raw)
                     .ok()
                     .and_then(|v| v.get("code").and_then(|c| c.as_i64()))
                     .unwrap_or(-1);

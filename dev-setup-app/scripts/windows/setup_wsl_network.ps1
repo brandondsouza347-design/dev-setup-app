@@ -32,20 +32,23 @@ Write-Host "✓ Step 1 complete — WSL distro '$DistroName' is registered and r
 
 Write-Host "`n==> Step 2: Configuring WSL to use fixed DNS (not auto-generated)..."
 
-$wslConf = @"
-[network]
-generateResolvConf = false
-
-[automount]
-enabled = true
-options = "metadata"
-
-[interop]
-enabled = true
-appendWindowsPath = true
-"@
-
-wsl -d $DistroName -- bash -c "echo '$wslConf' | sudo tee /etc/wsl.conf > /dev/null"
+# Write each line individually using wsl --user root to avoid TTY/sudo issues.
+# Multiple small commands are safer than one multi-line heredoc when piped
+# through the agent shell chain.
+$wslConfLines = @(
+    "[network]",
+    "generateResolvConf = false",
+    "",
+    "[automount]",
+    "enabled = true",
+    'options = "metadata"',
+    "",
+    "[interop]",
+    "enabled = true",
+    "appendWindowsPath = true"
+)
+$wslConfContent = $wslConfLines -join "\n"
+wsl -d $DistroName --user root -- bash -c "printf '$wslConfContent\n' > /etc/wsl.conf"
 Write-Host "✓ Step 2 complete — /etc/wsl.conf written with generateResolvConf=false, automount and interop enabled" -ForegroundColor Green
 
 # ─── 3. Set DNS servers in resolv.conf ───────────────────────────────────────
@@ -58,10 +61,8 @@ nameserver 8.8.4.4
 nameserver 1.1.1.1
 "@
 
-# chattr -i first in case a previous run made the file immutable — suppress
-# errors so the command never writes to stderr (which PS5.1 treats as a
-# NativeCommandError when ErrorActionPreference=Stop).
-wsl -d $DistroName -- bash -c "sudo chattr -i /etc/resolv.conf 2>/dev/null || true; sudo rm -f /etc/resolv.conf 2>/dev/null || true; printf '%s\n' '$resolvConf' | sudo tee /etc/resolv.conf > /dev/null; sudo chattr +i /etc/resolv.conf 2>/dev/null || true"
+# Use --user root to avoid sudo TTY prompts that can hang the agent pipeline.
+wsl -d $DistroName --user root -- bash -c "chattr -i /etc/resolv.conf 2>/dev/null; rm -f /etc/resolv.conf; printf 'nameserver 8.8.8.8\nnameserver 8.8.4.4\nnameserver 1.1.1.1\n' > /etc/resolv.conf; chattr +i /etc/resolv.conf 2>/dev/null || true"
 Write-Host "✓ Step 3 complete — /etc/resolv.conf pinned with nameservers: 8.8.8.8, 8.8.4.4, 1.1.1.1" -ForegroundColor Green
 
 # ─── 4. Configure Windows hosts file ─────────────────────────────────────────
@@ -116,7 +117,7 @@ $hostEntries = @"
 127.0.0.1   erckinetic.local
 "@
 
-wsl -d $DistroName -- bash -c "grep -q 'erckinetic' /etc/hosts || echo '$hostEntries' | sudo tee -a /etc/hosts > /dev/null"
+wsl -d $DistroName --user root -- bash -c "grep -q 'erckinetic' /etc/hosts || printf '\n# Dev hostnames (added by setup tool)\n127.0.0.1   erckinetic\n127.0.0.1   erckinetic.local\n' >> /etc/hosts"
 Write-Host "✓ Step 5 complete — dev hostnames (erckinetic, erckinetic.local) mirrored into WSL /etc/hosts" -ForegroundColor Green
 
 # ─── 6. Configure .wslconfig for Windows host ────────────────────────────────
@@ -143,11 +144,17 @@ if (-not (Test-Path $wslConfigPath)) {
 
 Write-Host "`n==> Step 7: Testing network connectivity inside WSL..."
 
-$pingResult = wsl -d $DistroName -- bash -c "curl -s --max-time 5 https://api.github.com/zen 2>&1 || echo 'timeout'" 2>&1
-if ($pingResult -and $pingResult -notmatch "timeout|error|failed") {
-    Write-Host "✓ Step 7 complete — WSL has outbound internet access (GitHub API responded: $pingResult)" -ForegroundColor Green
-} else {
-    Write-Host "⚠ Step 7: Internet check inconclusive — WSL may need a restart to pick up the new DNS config" -ForegroundColor Yellow
+# Use --user root and a tight curl timeout. Don't treat a timeout as a failure —
+# WSL DNS changes only take effect after wsl --shutdown + restart.
+try {
+    $pingResult = wsl -d $DistroName --user root -- bash -c "curl -s --max-time 5 https://api.github.com/zen 2>/dev/null || echo 'timeout'"
+    if ($pingResult -and $pingResult -notmatch "timeout|error|failed") {
+        Write-Host "✓ Step 7 complete — WSL has outbound internet access" -ForegroundColor Green
+    } else {
+        Write-Host "⚠ Step 7: Internet check inconclusive (DNS changes apply after wsl --shutdown)" -ForegroundColor Yellow
+    }
+} catch {
+    Write-Host "⚠ Step 7: Could not test connectivity — $_ (non-fatal)" -ForegroundColor Yellow
 }
 
 Write-Host "`n✓ WSL network configuration complete!" -ForegroundColor Green
