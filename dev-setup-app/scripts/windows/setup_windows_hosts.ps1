@@ -7,6 +7,7 @@ $ErrorActionPreference = "Stop"
 $hostsPath = "C:\Windows\System32\drivers\etc\hosts"
 $entries = @(
     "127.0.0.1 t3582.local"
+    "127.0.0.1 erckinetic"
     "127.0.0.1 localhost"
 )
 

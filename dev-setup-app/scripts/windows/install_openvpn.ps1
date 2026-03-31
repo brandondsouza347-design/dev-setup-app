@@ -3,17 +3,26 @@ $ErrorActionPreference = 'Stop'
 
 # Step 1: Install OpenVPN (idempotent)
 Write-Output "→ Step 1/2: Checking OpenVPN installation..."
+Write-Output "  Querying winget for OpenVPNTechnologies.OpenVPN..."
 $installed = winget list --id OpenVPNTechnologies.OpenVPN --accept-source-agreements 2>&1
+Write-Output "  winget result: $installed"
 if ($installed -match "OpenVPN") {
-    Write-Output "✓ OpenVPN is already installed — skipping."
+    Write-Output "✓ OpenVPN is already installed — skipping installation."
 } else {
-    Write-Output "→ Installing OpenVPN via winget..."
+    Write-Output "  OpenVPN not found — starting installation via winget..."
+    Write-Output "  Package: OpenVPNTechnologies.OpenVPN (this may take a few minutes)..."
     winget install --id OpenVPNTechnologies.OpenVPN --accept-source-agreements --accept-package-agreements --silent
     # winget exit code -1978335189 (0x80073D54) = already installed — treat as success
     if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne -1978335189) {
         throw "winget install OpenVPN failed (exit code: $LASTEXITCODE)"
     }
-    Write-Output "✓ OpenVPN installed."
+    # Verify install
+    $verify = winget list --id OpenVPNTechnologies.OpenVPN --accept-source-agreements 2>&1
+    if ($verify -match "OpenVPN") {
+        Write-Output "✓ OpenVPN installed and verified successfully."
+    } else {
+        Write-Output "⚠ OpenVPN install completed but verification check inconclusive — proceeding."
+    }
 }
 
 # Step 2: Copy .ovpn to OpenVPN config directory

@@ -8,17 +8,56 @@ CLONE_DIR="${SETUP_CLONE_DIR:-/home/ubuntu/VsCodeProjects/erc}"
 echo "→ Repository: $REPO_URL"
 echo "→ Destination: $CLONE_DIR"
 
+# Pre-scan SSH host key to prevent interactive yes/no prompt (common cause of hang)
+GITLAB_HOST=$(echo "$REPO_URL" | sed 's/git@\([^:]*\):.*/\1/')
+echo "→ Pre-scanning SSH host key for $GITLAB_HOST..."
+mkdir -p ~/.ssh && chmod 700 ~/.ssh
+ssh-keyscan -H "$GITLAB_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+echo "✓ Host key accepted for $GITLAB_HOST."
+
 mkdir -p "$(dirname "$CLONE_DIR")"
 
 if [ -d "$CLONE_DIR/.git" ]; then
     echo "✓ Repository already cloned at $CLONE_DIR"
     echo "→ Running git pull to update..."
-    git -C "$CLONE_DIR" pull --ff-only 2>&1 || {
+    GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes" \
+        git -C "$CLONE_DIR" pull --ff-only 2>&1 || {
         echo "⚠ git pull failed (possible local changes or non-fast-forward). Leaving repo as-is."
     }
     echo "✓ Repository is up to date."
 else
-    echo "→ Cloning repository..."
-    git clone "$REPO_URL" "$CLONE_DIR"
+    echo "→ Cloning repository (progress reported every 30s)..."
+
+    # Clone in background so we can print periodic progress
+    GIT_LOG=$(mktemp)
+    GIT_TERMINAL_PROMPT=0 \
+    GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes" \
+        git clone --progress "$REPO_URL" "$CLONE_DIR" >"$GIT_LOG" 2>&1 &
+    GIT_PID=$!
+
+    ELAPSED=0
+    while kill -0 "$GIT_PID" 2>/dev/null; do
+        sleep 30
+        ELAPSED=$((ELAPSED + 30))
+        RESOLVING=$(grep -oE 'Resolving deltas:[[:space:]]+[0-9]+%[^,]*' "$GIT_LOG" 2>/dev/null | tail -1 || true)
+        PROGRESS=$(grep -oE 'Receiving objects:[[:space:]]+[0-9]+%[^,]*' "$GIT_LOG" 2>/dev/null | tail -1 || true)
+        if [ -n "$RESOLVING" ]; then
+            echo "  [${ELAPSED}s] $RESOLVING"
+        elif [ -n "$PROGRESS" ]; then
+            echo "  [${ELAPSED}s] $PROGRESS"
+        else
+            echo "  [${ELAPSED}s] Cloning in progress..."
+        fi
+    done
+
+    wait "$GIT_PID"
+    GIT_EXIT=$?
+    cat "$GIT_LOG"
+    rm -f "$GIT_LOG"
+
+    if [ "$GIT_EXIT" -ne 0 ]; then
+        echo "✗ git clone failed (exit code $GIT_EXIT). Check SSH key and VPN connectivity."
+        exit "$GIT_EXIT"
+    fi
     echo "✓ Repository cloned successfully to $CLONE_DIR"
 fi
