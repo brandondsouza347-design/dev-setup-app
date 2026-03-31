@@ -629,18 +629,51 @@ pub async fn execute_script(
 
     let mut all_logs: Vec<String> = Vec::new();
 
+    // Hard timeout to prevent indefinite hangs — 15 minutes for most steps,
+    // 30 minutes for long-running steps like pyenv, import_wsl_tar
+    let timeout_secs = match step.id.as_str() {
+        "pyenv" | "pyenv_wsl" => 1800,      // 30 min
+        "import_wsl_tar" => 1800,           // 30 min
+        "revert_wsl_distro" => 1800,        // 30 min
+        _ => 900,                           // 15 min default
+    };
+    let timeout = std::time::Duration::from_secs(timeout_secs);
+    let timeout_handle = tokio::time::sleep(timeout);
+    tokio::pin!(timeout_handle);
+
     // Drain the merged channel until both tasks have finished and dropped their senders
-    while let Some((line, is_stderr)) = rx.recv().await {
-        if is_stderr {
-            if !line.trim().is_empty() {
-                log::warn!("[{}][stderr] {}", step.id, line);
-                all_logs.push(format!("[stderr] {}", line));
-                emit_log(&window, &step.id, &line, LogLevel::Warn);
+    // or timeout is reached
+    loop {
+        tokio::select! {
+            maybe_line = rx.recv() => {
+                match maybe_line {
+                    Some((line, is_stderr)) => {
+                        if is_stderr {
+                            if !line.trim().is_empty() {
+                                log::warn!("[{}][stderr] {}", step.id, line);
+                                all_logs.push(format!("[stderr] {}", line));
+                                emit_log(&window, &step.id, &line, LogLevel::Warn);
+                            }
+                        } else {
+                            log::info!("[{}] {}", step.id, line);
+                            all_logs.push(line.clone());
+                            emit_log(&window, &step.id, &line, classify_log_line(&line));
+                        }
+                    }
+                    None => break, // Both stdout/stderr tasks finished
+                }
             }
-        } else {
-            log::info!("[{}] {}", step.id, line);
-            all_logs.push(line.clone());
-            emit_log(&window, &step.id, &line, classify_log_line(&line));
+            _ = &mut timeout_handle => {
+                log::error!("execute_script: step '{}' TIMEOUT after {}s — killing process", step.id, timeout_secs);
+                let _ = child.kill().await;
+                emit_log(
+                    &window,
+                    &step.id,
+                    &format!("⚠ Script timeout after {}s — process killed", timeout_secs),
+                    LogLevel::Error,
+                );
+                return Err(format!("Script timeout after {}s", timeout_secs));
+            }
         }
     }
 
