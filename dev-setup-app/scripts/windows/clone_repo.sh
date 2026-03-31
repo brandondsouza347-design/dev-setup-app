@@ -31,10 +31,26 @@ fi
 if $REPO_VALID; then
     echo "✓ Repository already cloned at $CLONE_DIR"
     echo "→ Running git pull to update..."
+
+    # Stash any local changes so pull can proceed cleanly
+    STASH_OUT=$(git -C "$CLONE_DIR" stash 2>&1 || true)
+    STASHED=false
+    if echo "$STASH_OUT" | grep -q 'Saved working directory'; then
+        STASHED=true
+        echo "  Local changes stashed: $STASH_OUT"
+    fi
+
     GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes" \
         git -C "$CLONE_DIR" pull --ff-only 2>&1 || {
-        echo "⚠ git pull failed (possible local changes or non-fast-forward). Leaving repo as-is."
+        echo "⚠ git pull failed (non-fast-forward or other error). Leaving repo as-is."
     }
+
+    # Restore stashed changes
+    if $STASHED; then
+        echo "  Restoring stashed local changes..."
+        git -C "$CLONE_DIR" stash pop 2>&1 || echo "  ⚠ Stash pop had conflicts — changes left in stash."
+    fi
+
     echo "✓ Repository is up to date."
 else
     echo "→ Cloning repository (progress reported every 30s)..."

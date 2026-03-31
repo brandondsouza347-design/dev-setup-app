@@ -119,12 +119,16 @@ if (-not $wsContent) {
         Write-Output "⚠ code.cmd not found — cannot install extensions automatically."
         Write-Output "  Extensions to install manually: $($extensions -join ', ')"
     } else {
-        Write-Output "  Found $($extensions.Count) extension(s) to install."
+        Write-Output "  Found $($extensions.Count) extension(s) to install into WSL remote (wsl+ERC)..."
+        $successCount = 0
+        $failCount = 0
         foreach ($ext in $extensions) {
-            Write-Output "  Installing: $ext"
-            & $codePath --install-extension $ext --force 2>&1 | ForEach-Object { Write-Output "    $_" }
+            Write-Output "  Installing (WSL): $ext"
+            $result = & $codePath --remote "wsl+ERC" --install-extension $ext --force 2>&1
+            $result | ForEach-Object { Write-Output "    $_" }
+            if ($LASTEXITCODE -eq 0) { $successCount++ } else { $failCount++ }
         }
-        Write-Output "✓ Extension installation complete."
+        Write-Output "✓ Extension installation complete — $successCount succeeded, $failCount failed."
     }
 }
 
