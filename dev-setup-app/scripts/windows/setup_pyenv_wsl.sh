@@ -70,7 +70,9 @@ echo "==> Step 2: Installing pyenv via curl..."
 if command -v pyenv &>/dev/null && [ -d "$HOME/.pyenv" ]; then
     echo "✓ pyenv already installed: $(pyenv --version)"
 else
-    curl -fsSL https://pyenv.run | bash
+    # GIT_SSL_NO_VERIFY bypasses corporate CA for git clones inside pyenv.run
+    export GIT_SSL_NO_VERIFY=1
+    curl -fsSL --insecure https://pyenv.run | bash
     echo "✓ pyenv installed"
 fi
 
@@ -95,7 +97,9 @@ echo "==> Step 4: Installing Python $PYTHON_VERSION..."
 if [ -d "$HOME/.pyenv/versions/$PYTHON_VERSION" ]; then
     echo "✓ Python $PYTHON_VERSION already installed"
 else
-    # --skip-existing (-s) never prompts even if the version dir exists.
+    # PYTHON_BUILD_CURL_OPTS bypasses corporate CA when pyenv downloads Python source
+    export PYTHON_BUILD_CURL_OPTS="-k"
+    export GIT_SSL_NO_VERIFY=1
     pyenv install --skip-existing "$PYTHON_VERSION"
     echo "✓ Python $PYTHON_VERSION installed"
 fi

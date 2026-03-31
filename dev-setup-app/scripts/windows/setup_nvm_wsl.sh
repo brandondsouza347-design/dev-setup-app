@@ -34,13 +34,16 @@ if [ -s "$NVM_DIR/nvm.sh" ]; then
         echo "✓ NVM v$NVM_VERSION already installed"
     else
         echo "  Upgrading NVM from v$INSTALLED_NVM to v$NVM_VERSION..."
-        curl -fsSL "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh" | bash
+        # GIT_SSL_NO_VERIFY bypasses corporate CA for git operations inside install.sh
+        export GIT_SSL_NO_VERIFY=1
+        curl -fsSL --insecure "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh" | bash
         source "$NVM_DIR/nvm.sh"
         echo "✓ NVM upgraded to v$NVM_VERSION"
     fi
 else
     echo "  Downloading and installing NVM v$NVM_VERSION..."
-    curl -fsSL "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh" | bash
+    export GIT_SSL_NO_VERIFY=1
+    curl -fsSL --insecure "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh" | bash
     source "$NVM_DIR/nvm.sh"
     echo "✓ NVM v$NVM_VERSION installed"
 fi
