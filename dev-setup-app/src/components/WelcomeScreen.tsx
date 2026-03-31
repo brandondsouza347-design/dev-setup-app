@@ -32,6 +32,12 @@ export const WelcomeScreen: React.FC<Props> = ({ osInfo, onNext }) => {
         '🐘 PostgreSQL 16 (with roles & databases)',
         '📦 Redis cache server',
         '💙 VS Code extensions + MCP config (Kibana, GitLab)',
+        '🔒 OpenVPN install + VPN connect',
+        '🔑 GitLab SSH key generation + upload',
+        '📂 Clone ERC repository',
+        '🐍 pyenv local Python version set',
+        '🖥️ Workspace setup (MCP config + extensions + open VS Code)',
+        '⚙️ Python interpreter configuration',
       ]
     : [
         '🐧 WSL2 feature enablement',
@@ -47,7 +53,12 @@ export const WelcomeScreen: React.FC<Props> = ({ osInfo, onNext }) => {
         '🐘 PostgreSQL (WSL — skipped if present)',
         '📦 Redis (WSL — skipped if present)',
         '📝 Windows hosts file (.local tenant entries — skipped if present)',
-        '⚠️ OpenVPN, Atlassian MCP & tenant copy require manual setup',
+        '🔒 OpenVPN install + VPN connect',
+        '🔑 GitLab SSH key generation + upload',
+        '📂 Clone ERC repository',
+        '🐍 pyenv local Python version set',
+        '🖥️ Workspace setup (MCP config + extensions + open VS Code)',
+        '⚙️ Python interpreter configuration',
       ];
 
   return (
