@@ -17,7 +17,18 @@ echo "✓ Host key accepted for $GITLAB_HOST."
 
 mkdir -p "$(dirname "$CLONE_DIR")"
 
+# Validate repo: .git dir must exist AND have at least one commit (catches partial/broken clones)
+REPO_VALID=false
 if [ -d "$CLONE_DIR/.git" ]; then
+    if git -C "$CLONE_DIR" rev-parse --verify HEAD >/dev/null 2>&1; then
+        REPO_VALID=true
+    else
+        echo "⚠ Found $CLONE_DIR/.git but repo has no commits — removing and re-cloning..."
+        rm -rf "$CLONE_DIR"
+    fi
+fi
+
+if $REPO_VALID; then
     echo "✓ Repository already cloned at $CLONE_DIR"
     echo "→ Running git pull to update..."
     GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes" \
