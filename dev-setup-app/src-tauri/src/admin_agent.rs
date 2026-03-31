@@ -454,5 +454,8 @@ fn build_env_json(config: &UserConfig) -> serde_json::Value {
     if let Some(ref v) = config.openvpn_config_path  { map.insert("SETUP_OPENVPN_CONFIG_PATH".into(),  v.clone().into()); }
     if let Some(ref v) = config.git_name              { map.insert("SETUP_GIT_NAME".into(),             v.clone().into()); }
     if let Some(ref v) = config.git_email             { map.insert("SETUP_GIT_EMAIL".into(),            v.clone().into()); }
+    if let Some(ref v) = config.gitlab_pat            { map.insert("SETUP_GITLAB_PAT".into(),           v.clone().into()); }
+    if let Some(ref v) = config.gitlab_repo_url       { map.insert("SETUP_GITLAB_REPO_URL".into(),      v.clone().into()); }
+    if let Some(ref v) = config.clone_dir             { map.insert("SETUP_CLONE_DIR".into(),            v.clone().into()); }
     serde_json::Value::Object(map)
 }

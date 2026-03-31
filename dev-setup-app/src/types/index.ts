@@ -56,6 +56,9 @@ export interface UserConfig {
   openvpn_config_path: string | null;
   git_name: string | null;
   git_email: string | null;
+  gitlab_pat: string | null;
+  gitlab_repo_url: string | null;
+  clone_dir: string | null;
 }
 
 export interface FullState {
@@ -69,6 +72,7 @@ export interface FullState {
 export interface PrereqCheck {
   name: string;
   passed: boolean;
+  warning?: boolean;
   message: string;
 }
 

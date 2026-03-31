@@ -43,6 +43,7 @@ fn main() {
             commands::request_admin_agent,
             commands::is_admin_agent_ready,
             commands::shutdown_admin_agent,
+            commands::open_url,
         ])
         .setup(|_app| {
             log::info!(

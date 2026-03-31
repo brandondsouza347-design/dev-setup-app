@@ -54,6 +54,12 @@ pub struct UserConfig {
     pub openvpn_config_path: Option<String>,
     pub git_name: Option<String>,
     pub git_email: Option<String>,
+    #[serde(default)]
+    pub gitlab_pat: Option<String>,
+    #[serde(default)]
+    pub gitlab_repo_url: Option<String>,
+    #[serde(default)]
+    pub clone_dir: Option<String>,
 }
 
 impl Default for UserConfig {
@@ -70,6 +76,9 @@ impl Default for UserConfig {
             openvpn_config_path: None,
             git_name: None,
             git_email: None,
+            gitlab_pat: None,
+            gitlab_repo_url: None,
+            clone_dir: None,
         }
     }
 }

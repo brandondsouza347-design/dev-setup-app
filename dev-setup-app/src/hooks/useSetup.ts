@@ -80,6 +80,9 @@ export function useSetup(): UseSetupReturn {
     openvpn_config_path: null,
     git_name: null,
     git_email: null,
+    gitlab_pat: null,
+    gitlab_repo_url: 'git@gitlab.toogoerp.net:root/erc.git',
+    clone_dir: '/home/ubuntu/VsCodeProjects/erc',
   });
   const [prereqChecks, setPrereqChecks] = useState<PrereqCheck[]>([]);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);

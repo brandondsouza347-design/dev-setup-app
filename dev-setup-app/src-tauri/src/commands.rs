@@ -45,6 +45,9 @@ pub struct ConfigInput {
     pub openvpn_config_path: Option<String>,
     pub git_name: Option<String>,
     pub git_email: Option<String>,
+    pub gitlab_pat: Option<String>,
+    pub gitlab_repo_url: Option<String>,
+    pub clone_dir: Option<String>,
 }
 
 /// Detects the current operating system.
@@ -571,11 +574,13 @@ pub async fn check_prerequisites() -> Vec<PrereqCheck> {
         checks.push(check_command_available("git", "Git"));
         checks.push(check_command_available("curl", "curl"));
         checks.push(check_command_available("bash", "bash"));
+        checks.push(check_vpn_connectivity().await);
     } else if os.os == "windows" {
         checks.push(check_admin_rights());
         checks.push(check_command_available("wsl", "WSL"));
         checks.push(check_command_available("winget", "winget"));
         checks.push(check_command_available("powershell", "PowerShell"));
+        checks.push(check_vpn_connectivity().await);
     }
 
     let failed: Vec<_> = checks.iter().filter(|c| !c.passed).map(|c| c.name.as_str()).collect();
@@ -592,6 +597,7 @@ pub async fn check_prerequisites() -> Vec<PrereqCheck> {
 pub struct PrereqCheck {
     pub name: String,
     pub passed: bool,
+    pub warning: bool,
     pub message: String,
 }
 
@@ -612,11 +618,42 @@ fn check_command_available(cmd: &str, label: &str) -> PrereqCheck {
     PrereqCheck {
         name: label.to_string(),
         passed: available,
+        warning: false,
         message: if available {
             format!("{} is available", label)
         } else {
             format!("{} not found in PATH", label)
         },
+    }
+}
+
+async fn check_vpn_connectivity() -> PrereqCheck {
+    use std::time::Duration;
+    log::info!("check_vpn_connectivity: testing TCP connection to gitlab.toogoerp.net:443");
+    let result = tokio::time::timeout(
+        Duration::from_secs(3),
+        tokio::net::TcpStream::connect("gitlab.toogoerp.net:443"),
+    )
+    .await;
+    match result {
+        Ok(Ok(_)) => {
+            log::info!("check_vpn_connectivity: [PASS] gitlab.toogoerp.net:443 reachable");
+            PrereqCheck {
+                name: "GitLab VPN Connectivity".to_string(),
+                passed: true,
+                warning: false,
+                message: "gitlab.toogoerp.net is reachable — VPN is connected.".to_string(),
+            }
+        }
+        _ => {
+            log::warn!("check_vpn_connectivity: [WARN] gitlab.toogoerp.net:443 not reachable");
+            PrereqCheck {
+                name: "GitLab VPN Connectivity".to_string(),
+                passed: false,
+                warning: true,
+                message: "Cannot reach gitlab.toogoerp.net:443. Connect to VPN before running GitLab steps. You can continue; GitLab steps will fail without VPN.".to_string(),
+            }
+        }
     }
 }
 
@@ -655,6 +692,7 @@ fn check_disk_space() -> PrereqCheck {
     PrereqCheck {
         name: "Home Directory".to_string(),
         passed: home.is_some(),
+        warning: false,
         message: home
             .map(|p| format!("Home directory: {}", p.display()))
             .unwrap_or_else(|| "Could not determine home directory".to_string()),
@@ -683,6 +721,7 @@ fn check_admin_rights() -> PrereqCheck {
         return PrereqCheck {
             name: "Administrator Rights".to_string(),
             passed: is_admin,
+            warning: false,
             message: if is_admin {
                 "Running as Administrator".to_string()
             } else {
@@ -694,6 +733,7 @@ fn check_admin_rights() -> PrereqCheck {
     PrereqCheck {
         name: "Administrator Rights".to_string(),
         passed: true,
+        warning: false,
         message: "Not applicable on this platform".to_string(),
     }
 }
@@ -750,8 +790,18 @@ pub fn save_config(
         openvpn_config_path: input.openvpn_config_path,
         git_name: input.git_name,
         git_email: input.git_email,
+        gitlab_pat: input.gitlab_pat,
+        gitlab_repo_url: input.gitlab_repo_url,
+        clone_dir: input.clone_dir,
     };
     Ok(())
+}
+
+/// Opens a URL in the system default browser.
+#[tauri::command]
+pub async fn open_url(url: String, app_handle: AppHandle) -> Result<(), String> {
+    use tauri_plugin_shell::ShellExt;
+    app_handle.shell().open(&url, None).map_err(|e| e.to_string())
 }
 
 // ─── Admin Agent Commands ────────────────────────────────────────────────────

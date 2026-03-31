@@ -1,6 +1,6 @@
 // components/PrereqScreen.tsx — Pre-flight checks before setup
 import React, { useEffect } from 'react';
-import { CheckCircle, XCircle, RefreshCw, ChevronRight, ChevronLeft, ShieldCheck, ShieldAlert, Loader2, ShieldOff } from 'lucide-react';
+import { CheckCircle, XCircle, RefreshCw, ChevronRight, ChevronLeft, ShieldCheck, ShieldAlert, Loader2, ShieldOff, AlertTriangle } from 'lucide-react';
 import type { PrereqCheck, WizardPage, AdminAgentStatus } from '../types';
 
 interface Props {
@@ -44,8 +44,8 @@ export const PrereqScreen: React.FC<Props> = ({
     }
   };
 
-  const allPassed = checks.length > 0 && checks.every((c) => c.passed);
-  const hasFailures = checks.some((c) => !c.passed);
+  const allPassed = checks.length > 0 && checks.every((c) => c.passed || c.warning);
+  const hasFailures = checks.some((c) => !c.passed && !c.warning);
 
   return (
     <div className="flex flex-col h-full p-8">
@@ -73,11 +73,15 @@ export const PrereqScreen: React.FC<Props> = ({
             className={`flex items-start gap-3 p-4 rounded-lg border ${
               check.passed
                 ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                : check.warning
+                ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700'
                 : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
             }`}
           >
             {check.passed ? (
               <CheckCircle className="w-5 h-5 text-green-500 mt-0.5 shrink-0" />
+            ) : check.warning ? (
+              <AlertTriangle className="w-5 h-5 text-amber-500 mt-0.5 shrink-0" />
             ) : (
               <XCircle className="w-5 h-5 text-red-500 mt-0.5 shrink-0" />
             )}

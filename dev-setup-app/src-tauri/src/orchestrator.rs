@@ -386,6 +386,148 @@ fn all_steps() -> Vec<SetupStep> {
             estimated_minutes: 1,
             rollback_steps: vec![],
         },
+        // ── GitLab onboarding track (Windows) ──────────────────────────────────────────────────
+        SetupStep {
+            id: "install_openvpn".to_string(),
+            title: "Install OpenVPN".to_string(),
+            description: "Install OpenVPN via winget and copy the .ovpn config to the OpenVPN config directory.".to_string(),
+            platform: Platform::Windows,
+            category: StepCategory::Network,
+            required: true,
+            estimated_minutes: 3,
+            rollback_steps: vec![],
+        },
+        SetupStep {
+            id: "connect_vpn".to_string(),
+            title: "Connect to VPN".to_string(),
+            description: "Launch OpenVPN and wait until gitlab.toogoerp.net is reachable. Exits immediately if already connected.".to_string(),
+            platform: Platform::Windows,
+            category: StepCategory::Network,
+            required: true,
+            estimated_minutes: 3,
+            rollback_steps: vec![],
+        },
+        SetupStep {
+            id: "gitlab_ssh".to_string(),
+            title: "Add SSH Key to GitLab".to_string(),
+            description: "Generate an SSH key in WSL (if needed) and upload it to GitLab via API. Falls back to manual instructions if no PAT is set.".to_string(),
+            platform: Platform::Windows,
+            category: StepCategory::Vcs,
+            required: true,
+            estimated_minutes: 2,
+            rollback_steps: vec![],
+        },
+        SetupStep {
+            id: "clone_repo".to_string(),
+            title: "Clone Project Repository".to_string(),
+            description: "Clone the ERC repository into the configured WSL clone directory. Runs git pull if the repo already exists.".to_string(),
+            platform: Platform::Windows,
+            category: StepCategory::Vcs,
+            required: true,
+            estimated_minutes: 3,
+            rollback_steps: vec![],
+        },
+        SetupStep {
+            id: "pyenv_local".to_string(),
+            title: "Set Python Version (pyenv local)".to_string(),
+            description: "Run pyenv local erc inside the cloned repo to pin the virtualenv for the project directory.".to_string(),
+            platform: Platform::Windows,
+            category: StepCategory::Python,
+            required: true,
+            estimated_minutes: 1,
+            rollback_steps: vec![],
+        },
+        SetupStep {
+            id: "setup_workspace".to_string(),
+            title: "Open VS Code Workspace".to_string(),
+            description: "Write Kibana + GitLab MCP config, install all Propello.code-workspace extensions, and open the workspace in VS Code.".to_string(),
+            platform: Platform::Windows,
+            category: StepCategory::Editor,
+            required: false,
+            estimated_minutes: 3,
+            rollback_steps: vec![],
+        },
+        SetupStep {
+            id: "python_interpreter".to_string(),
+            title: "Configure Python Interpreter".to_string(),
+            description: "Display step-by-step instructions for selecting the pyenv virtualenv as VS Code's Python interpreter.".to_string(),
+            platform: Platform::Windows,
+            category: StepCategory::Editor,
+            required: false,
+            estimated_minutes: 1,
+            rollback_steps: vec![],
+        },
+        // ── GitLab onboarding track (macOS) ─────────────────────────────────────────────────
+        SetupStep {
+            id: "install_openvpn_mac".to_string(),
+            title: "Install Tunnelblick (OpenVPN)".to_string(),
+            description: "Install Tunnelblick via Homebrew and copy the .ovpn config to the Tunnelblick Configurations directory.".to_string(),
+            platform: Platform::MacOs,
+            category: StepCategory::Network,
+            required: true,
+            estimated_minutes: 3,
+            rollback_steps: vec![],
+        },
+        SetupStep {
+            id: "connect_vpn_mac".to_string(),
+            title: "Connect to VPN".to_string(),
+            description: "Open Tunnelblick and wait until gitlab.toogoerp.net is reachable. Exits immediately if already connected.".to_string(),
+            platform: Platform::MacOs,
+            category: StepCategory::Network,
+            required: true,
+            estimated_minutes: 3,
+            rollback_steps: vec![],
+        },
+        SetupStep {
+            id: "gitlab_ssh_mac".to_string(),
+            title: "Add SSH Key to GitLab".to_string(),
+            description: "Generate an SSH key (if needed) and upload it to GitLab via API. Falls back to manual instructions if no PAT is set.".to_string(),
+            platform: Platform::MacOs,
+            category: StepCategory::Vcs,
+            required: true,
+            estimated_minutes: 2,
+            rollback_steps: vec![],
+        },
+        SetupStep {
+            id: "clone_repo_mac".to_string(),
+            title: "Clone Project Repository".to_string(),
+            description: "Clone the ERC repository into the configured clone directory. Runs git pull if the repo already exists.".to_string(),
+            platform: Platform::MacOs,
+            category: StepCategory::Vcs,
+            required: true,
+            estimated_minutes: 3,
+            rollback_steps: vec![],
+        },
+        SetupStep {
+            id: "pyenv_local_mac".to_string(),
+            title: "Set Python Version (pyenv local)".to_string(),
+            description: "Run pyenv local erc inside the cloned repo to pin the virtualenv for the project directory.".to_string(),
+            platform: Platform::MacOs,
+            category: StepCategory::Python,
+            required: true,
+            estimated_minutes: 1,
+            rollback_steps: vec![],
+        },
+        SetupStep {
+            id: "setup_workspace_mac".to_string(),
+            title: "Open VS Code Workspace".to_string(),
+            description: "Write Kibana + GitLab MCP config, install all Propello.code-workspace extensions, and open the workspace in VS Code.".to_string(),
+            platform: Platform::MacOs,
+            category: StepCategory::Editor,
+            required: false,
+            estimated_minutes: 3,
+            rollback_steps: vec![],
+        },
+        SetupStep {
+            id: "python_interpreter_mac".to_string(),
+            title: "Configure Python Interpreter".to_string(),
+            description: "Display step-by-step instructions for selecting the pyenv virtualenv as VS Code's Python interpreter.".to_string(),
+            platform: Platform::MacOs,
+            category: StepCategory::Editor,
+            required: false,
+            estimated_minutes: 1,
+            rollback_steps: vec![],
+        },
     ]
 }
 
@@ -582,6 +724,22 @@ fn build_script_command(
         "wslconfig_networking" => ("windows", "setup_wslconfig_networking.ps1", "powershell", vec![]),
         "wsl_cleanup"          => ("windows", "setup_wsl_cleanup.ps1",          "powershell", vec![]),
         "windows_hosts"        => ("windows", "setup_windows_hosts.ps1",        "powershell", vec![]),
+        // Windows GitLab onboarding track
+        "install_openvpn"      => ("windows", "install_openvpn.ps1",           "powershell", vec![]),
+        "connect_vpn"          => ("windows", "connect_vpn.ps1",               "powershell", vec![]),
+        "gitlab_ssh"           => ("windows", "setup_gitlab_ssh.sh",           "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
+        "clone_repo"           => ("windows", "clone_repo.sh",                 "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
+        "pyenv_local"          => ("windows", "pyenv_local.sh",                "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
+        "setup_workspace"      => ("windows", "setup_workspace.ps1",          "powershell", vec![]),
+        "python_interpreter"   => ("windows", "python_interpreter.sh",        "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
+        // macOS GitLab onboarding track
+        "install_openvpn_mac"     => ("macos", "install_openvpn.sh",     "bash", vec![]),
+        "connect_vpn_mac"         => ("macos", "connect_vpn.sh",         "bash", vec![]),
+        "gitlab_ssh_mac"          => ("macos", "setup_gitlab_ssh.sh",    "bash", vec![]),
+        "clone_repo_mac"          => ("macos", "clone_repo.sh",          "bash", vec![]),
+        "pyenv_local_mac"         => ("macos", "pyenv_local.sh",         "bash", vec![]),
+        "setup_workspace_mac"     => ("macos", "setup_workspace.sh",     "bash", vec![]),
+        "python_interpreter_mac"  => ("macos", "python_interpreter.sh",  "bash", vec![]),
         // Revert scripts
         "revert_shutdown_wsl"  => ("windows", "revert_wsl_shutdown.ps1",   "powershell", vec![]),
         "revert_wsl_distro"    => ("windows", "revert_wsl_distro.ps1",     "powershell", vec![]),
@@ -670,6 +828,15 @@ fn build_env(config: &UserConfig) -> Vec<(String, String)> {
     }
     if let Some(ref git_email) = config.git_email {
         env.push(("SETUP_GIT_EMAIL".to_string(), git_email.clone()));
+    }
+    if let Some(ref v) = config.gitlab_pat {
+        env.push(("SETUP_GITLAB_PAT".to_string(), v.clone()));
+    }
+    if let Some(ref v) = config.gitlab_repo_url {
+        env.push(("SETUP_GITLAB_REPO_URL".to_string(), v.clone()));
+    }
+    if let Some(ref v) = config.clone_dir {
+        env.push(("SETUP_CLONE_DIR".to_string(), v.clone()));
     }
     env
 }

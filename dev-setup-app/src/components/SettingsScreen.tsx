@@ -1,7 +1,8 @@
 // components/SettingsScreen.tsx — Configure installation parameters
 import React, { useState } from 'react';
-import { Save, ChevronLeft, ChevronRight, FolderOpen, AlertTriangle } from 'lucide-react';
+import { Save, ChevronLeft, ChevronRight, FolderOpen, AlertTriangle, ExternalLink } from 'lucide-react';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
+import { invoke } from '@tauri-apps/api/core';
 import type { UserConfig, WizardPage, OsInfo } from '../types';
 
 interface Props {
@@ -61,6 +62,11 @@ export const SettingsScreen: React.FC<Props> = ({ config, osInfo, onUpdate, onSa
     });
     if (typeof selected === 'string') update('openvpn_config_path', selected);
   };
+
+  const openGitLabPAT = () =>
+    invoke('open_url', {
+      url: 'https://gitlab.toogoerp.net/-/profile/personal_access_tokens?name=DevSetup&scopes=api,write_repository',
+    });
 
   return (
     <div className="flex flex-col h-full p-8 overflow-y-auto">
@@ -234,6 +240,51 @@ export const SettingsScreen: React.FC<Props> = ({ config, osInfo, onUpdate, onSa
               Skip steps for software that is already installed
             </label>
           </div>
+        </Section>
+
+        {/* GitLab Configuration */}
+        <Section title="GitLab Configuration">
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 text-blue-800 dark:text-blue-300 text-sm">
+            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+            <span>A GitLab Personal Access Token is required for automated SSH key upload. Leave blank to add your SSH key manually.</span>
+          </div>
+          <Field label="Personal Access Token (PAT)" hint="Needed for automated SSH key upload">
+            <div className="flex gap-2">
+              <input
+                type="password"
+                value={config.gitlab_pat ?? ''}
+                onChange={(e) => update('gitlab_pat', e.target.value || null)}
+                className="input flex-1"
+                placeholder="glpat-xxxxxxxxxxxxxxxxxxxx"
+              />
+              <button
+                onClick={openGitLabPAT}
+                className="btn-secondary flex items-center gap-1 px-3 text-sm whitespace-nowrap"
+                title="Open GitLab to create a PAT"
+              >
+                <ExternalLink className="w-4 h-4" />
+                Create PAT
+              </button>
+            </div>
+          </Field>
+          <Field label="Repository URL" hint="SSH URL of the repo to clone">
+            <input
+              type="text"
+              value={config.gitlab_repo_url ?? ''}
+              onChange={(e) => update('gitlab_repo_url', e.target.value || null)}
+              className="input"
+              placeholder="git@gitlab.toogoerp.net:root/erc.git"
+            />
+          </Field>
+          <Field label="Clone Directory" hint={isWindows ? 'WSL path e.g. /home/ubuntu/VsCodeProjects/erc' : 'e.g. ~/VsCodeProjects/erc'}>
+            <input
+              type="text"
+              value={config.clone_dir ?? ''}
+              onChange={(e) => update('clone_dir', e.target.value || null)}
+              className="input"
+              placeholder={isWindows ? '/home/ubuntu/VsCodeProjects/erc' : '~/VsCodeProjects/erc'}
+            />
+          </Field>
         </Section>
       </div>
 
