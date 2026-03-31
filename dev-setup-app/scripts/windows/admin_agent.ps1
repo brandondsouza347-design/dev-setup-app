@@ -89,8 +89,29 @@ while ($true) {
             $PROG_DIR      = "C:\Program Files\DevSetupAgent"
             $trustedScript = "$PROG_DIR\step_$stepId.ps1"
             New-Item -ItemType Directory -Force -Path $PROG_DIR | Out-Null
-            Get-Content -LiteralPath $script -Encoding UTF8 -Raw |
-                Set-Content -LiteralPath $trustedScript -Encoding UTF8
+
+            # Remove any stale staged file from a previous run before writing.
+            # This prevents 'file in use by another process' errors on retry.
+            Remove-Item -Path $trustedScript -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Milliseconds 200
+
+            # Retry the stage write a few times in case the old file handle is still releasing
+            $staged = $false
+            for ($attempt = 1; $attempt -le 5; $attempt++) {
+                try {
+                    Get-Content -LiteralPath $script -Encoding UTF8 -Raw |
+                        Set-Content -LiteralPath $trustedScript -Encoding UTF8
+                    $staged = $true
+                    break
+                } catch {
+                    if ($attempt -lt 5) {
+                        Write-Log "Stage attempt $attempt failed ($_) — retrying in 1s..."
+                        Start-Sleep -Seconds 1
+                    } else {
+                        throw
+                    }
+                }
+            }
             Write-Log "Staged (UTF-8 BOM) step script to: $trustedScript"
 
             & powershell.exe -NonInteractive -NoProfile -ExecutionPolicy Bypass `
@@ -103,8 +124,20 @@ while ($true) {
             "ERROR: $_" | Out-File -FilePath $stepLog -Append -Encoding UTF8
             $exitCode = 1
         } finally {
-            # Clean up the staged copy
-            Remove-Item -Path "$PROG_DIR\step_$stepId.ps1" -Force -ErrorAction SilentlyContinue
+            # Retry removal — child powershell.exe may not have released the file handle immediately
+            $removed = $false
+            for ($r = 1; $r -le 10; $r++) {
+                try {
+                    Remove-Item -Path "$PROG_DIR\step_$stepId.ps1" -Force -ErrorAction Stop
+                    $removed = $true
+                    break
+                } catch {
+                    Start-Sleep -Milliseconds 300
+                }
+            }
+            if (-not $removed) {
+                Write-Log "Warning: could not remove staged script step_$stepId.ps1 — will be overwritten on next run"
+            }
         }
 
         # Write completion signal then remove the command file
