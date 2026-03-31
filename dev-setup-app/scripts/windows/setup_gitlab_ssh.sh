@@ -20,25 +20,46 @@ fi
 PUB_KEY=$(cat ~/.ssh/id_ed25519.pub)
 echo "  Public key: $PUB_KEY"
 
-echo "→ Step 2/3: Uploading SSH key to GitLab..."
+echo "→ Step 2/3: Checking and uploading SSH key to GitLab..."
 if [ -n "${SETUP_GITLAB_PAT:-}" ]; then
-    HTTP_CODE=$(curl -s -o /tmp/gl_key_resp.json -w "%{http_code}" \
-        --request POST "https://${GITLAB_HOST}/api/v4/user/keys" \
+    # Get the SHA256 fingerprint of the local public key
+    LOCAL_FP=$(ssh-keygen -l -E sha256 -f ~/.ssh/id_ed25519.pub 2>/dev/null | awk '{print $2}')
+    echo "  Local key fingerprint: $LOCAL_FP"
+
+    # Proactive check: fetch all keys already registered in GitLab
+    echo "  Fetching registered keys from GitLab..."
+    GL_KEYS=$(curl -s \
+        --request GET "https://${GITLAB_HOST}/api/v4/user/keys" \
         --header "PRIVATE-TOKEN: ${SETUP_GITLAB_PAT}" \
-        --header "Content-Type: application/json" \
-        --data "{\"title\":\"DevSetup-$(hostname)-$(date +%Y%m%d)\",\"key\":\"${PUB_KEY}\"}" \
-        --insecure \
-        --max-time 15 \
-        2>/dev/null || echo "000")
-    if [ "$HTTP_CODE" = "201" ]; then
-        echo "✓ SSH key uploaded to GitLab successfully."
-    elif [ "$HTTP_CODE" = "422" ] || ([ -f /tmp/gl_key_resp.json ] && grep -q "already been taken\|has already been taken" /tmp/gl_key_resp.json 2>/dev/null); then
-        echo "✓ SSH key already registered in GitLab — skipping upload."
+        --insecure --max-time 15 \
+        2>/dev/null || echo "[]")
+
+    KEY_ALREADY_EXISTS=false
+    if [ -n "$LOCAL_FP" ] && echo "$GL_KEYS" | grep -qF "$LOCAL_FP" 2>/dev/null; then
+        KEY_ALREADY_EXISTS=true
+    fi
+
+    if $KEY_ALREADY_EXISTS; then
+        echo "✓ SSH key (fingerprint: $LOCAL_FP) is already registered in GitLab — skipping upload."
     else
-        echo "⚠ GitLab API returned HTTP $HTTP_CODE."
-        echo "  Response: $(cat /tmp/gl_key_resp.json 2>/dev/null || echo '(no response)')"
-        echo "  Add your SSH key manually at: https://${GITLAB_HOST}/-/profile/keys"
-        echo "  Key to paste: $PUB_KEY"
+        echo "  Key not found in GitLab — uploading now..."
+        HTTP_CODE=$(curl -s -o /tmp/gl_key_resp.json -w "%{http_code}" \
+            --request POST "https://${GITLAB_HOST}/api/v4/user/keys" \
+            --header "PRIVATE-TOKEN: ${SETUP_GITLAB_PAT}" \
+            --header "Content-Type: application/json" \
+            --data "{\"title\":\"DevSetup-$(hostname)-$(date +%Y%m%d)\",\"key\":\"${PUB_KEY}\"}" \
+            --insecure --max-time 15 \
+            2>/dev/null || echo "000")
+        if [ "$HTTP_CODE" = "201" ]; then
+            echo "✓ SSH key uploaded to GitLab successfully."
+        elif [ "$HTTP_CODE" = "422" ] || grep -q "already been taken\|has already been taken" /tmp/gl_key_resp.json 2>/dev/null; then
+            echo "✓ SSH key already registered in GitLab (confirmed via upload response)."
+        else
+            echo "⚠ GitLab API returned HTTP $HTTP_CODE."
+            echo "  Response: $(cat /tmp/gl_key_resp.json 2>/dev/null || echo '(no response)')"
+            echo "  Add your SSH key manually at: https://${GITLAB_HOST}/-/profile/keys"
+            echo "  Key to paste: $PUB_KEY"
+        fi
     fi
 else
     echo "⚠ SETUP_GITLAB_PAT not set — skipping automated upload."
