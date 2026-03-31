@@ -15,9 +15,23 @@ if command -v redis-cli &>/dev/null; then
         echo "✓ Redis is running — skipping install"
     else
         echo "  Redis not responding — starting service..."
-        sudo service redis-server start
-        sleep 1
-        redis-cli ping && echo "✓ Redis is now running" || echo "  Warning: Redis started but ping failed"
+        if timeout 30 sudo service redis-server start 2>&1; then
+            echo "  service redis-server start returned"
+        else
+            local exit_code=$?
+            if [ $exit_code -eq 124 ]; then
+                echo "  WARNING: service start timed out after 30s"
+            else
+                echo "  WARNING: service start exited with code $exit_code"
+            fi
+        fi
+        sleep 2
+        if redis-cli ping 2>/dev/null | grep -q "PONG"; then
+            echo "✓ Redis is now running"
+        else
+            echo "  Warning: Redis started but ping failed — checking status..."
+            sudo service redis-server status || true
+        fi
     fi
     exit 0
 fi
@@ -39,15 +53,31 @@ fi
 
 # ─── Start service ───────────────────────────────────────────────────────────
 echo "==> Step 3: Starting Redis..."
-sudo service redis-server start
-sleep 1
+if timeout 30 sudo service redis-server start 2>&1; then
+    echo "  service redis-server start returned"
+else
+    local exit_code=$?
+    if [ $exit_code -eq 124 ]; then
+        echo "  WARNING: service start timed out after 30s"
+    else
+        echo "  WARNING: service start exited with code $exit_code"
+    fi
+fi
+sleep 2
 
 # ─── Verify ──────────────────────────────────────────────────────────────────
 echo "==> Step 4: Verification..."
 if redis-cli ping 2>/dev/null | grep -q "PONG"; then
     echo "✓ Redis is running and responding to PING"
 else
-    echo "  Warning: Redis started but did not respond to PING — may need manual check"
+    echo "  ERROR: Redis did not respond to PING after startup"
+    echo "  Checking service status..."
+    sudo service redis-server status || true
+    echo "  Checking if port 6379 is in use..."
+    ss -ltnp | grep 6379 || echo "  Port 6379 is not listening"
+    echo "  Last 20 lines of Redis log (if available)..."
+    sudo tail -20 /var/log/redis/redis-server.log 2>/dev/null || echo "  No Redis log found"
+    exit 1
 fi
 
 echo ""
