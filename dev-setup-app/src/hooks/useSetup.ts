@@ -83,6 +83,7 @@ export function useSetup(): UseSetupReturn {
     gitlab_pat: null,
     gitlab_repo_url: 'git@gitlab.toogoerp.net:root/erc.git',
     clone_dir: '/home/ubuntu/VsCodeProjects/erc',
+    wsl_default_user: 'ubuntu',
   });
   const [prereqChecks, setPrereqChecks] = useState<PrereqCheck[]>([]);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);

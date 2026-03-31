@@ -59,6 +59,7 @@ export interface UserConfig {
   gitlab_pat: string | null;
   gitlab_repo_url: string | null;
   clone_dir: string | null;
+  wsl_default_user: string;
 }
 
 export interface FullState {

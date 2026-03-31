@@ -3,6 +3,7 @@
 
 $ErrorActionPreference = "Stop"
 $DistroName = "ERC"
+$WslDefaultUser = if ($env:SETUP_WSL_DEFAULT_USER) { $env:SETUP_WSL_DEFAULT_USER } else { "ubuntu" }
 
 Write-Host "==> WSL Network Configuration" -ForegroundColor Cyan
 
@@ -36,6 +37,9 @@ Write-Host "`n==> Step 2: Configuring WSL to use fixed DNS (not auto-generated).
 # Multiple small commands are safer than one multi-line heredoc when piped
 # through the agent shell chain.
 $wslConfLines = @(
+    "[user]",
+    "default = $WslDefaultUser",
+    "",
     "[network]",
     "generateResolvConf = false",
     "",
@@ -49,7 +53,7 @@ $wslConfLines = @(
 )
 $wslConfContent = $wslConfLines -join "\n"
 wsl -d $DistroName --user root -- bash -c "printf '$wslConfContent\n' > /etc/wsl.conf"
-Write-Host "✓ Step 2 complete — /etc/wsl.conf written with generateResolvConf=false, automount and interop enabled" -ForegroundColor Green
+Write-Host "✓ Step 2 complete — /etc/wsl.conf written (default user: $WslDefaultUser, generateResolvConf=false, automount and interop enabled)" -ForegroundColor Green
 
 # ─── 3. Set DNS servers in resolv.conf ───────────────────────────────────────
 

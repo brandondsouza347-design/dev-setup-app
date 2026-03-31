@@ -170,6 +170,15 @@ export const SettingsScreen: React.FC<Props> = ({ config, osInfo, onUpdate, onSa
                 </button>
               </div>
             </Field>
+            <Field label="WSL Default User" hint="Linux username to log in as when WSL starts (default: ubuntu)">
+              <input
+                type="text"
+                value={config.wsl_default_user}
+                onChange={(e) => update('wsl_default_user', e.target.value || 'ubuntu')}
+                className="input"
+                placeholder="ubuntu"
+              />
+            </Field>
           </Section>
         )}
 

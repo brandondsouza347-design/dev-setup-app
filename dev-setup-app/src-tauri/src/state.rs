@@ -60,6 +60,8 @@ pub struct UserConfig {
     pub gitlab_repo_url: Option<String>,
     #[serde(default)]
     pub clone_dir: Option<String>,
+    #[serde(default)]
+    pub wsl_default_user: String,
 }
 
 impl Default for UserConfig {
@@ -79,6 +81,7 @@ impl Default for UserConfig {
             gitlab_pat: None,
             gitlab_repo_url: None,
             clone_dir: None,
+            wsl_default_user: "ubuntu".to_string(),
         }
     }
 }

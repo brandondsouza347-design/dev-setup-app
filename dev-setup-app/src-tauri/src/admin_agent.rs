@@ -457,5 +457,6 @@ fn build_env_json(config: &UserConfig) -> serde_json::Value {
     if let Some(ref v) = config.gitlab_pat            { map.insert("SETUP_GITLAB_PAT".into(),           v.clone().into()); }
     if let Some(ref v) = config.gitlab_repo_url       { map.insert("SETUP_GITLAB_REPO_URL".into(),      v.clone().into()); }
     if let Some(ref v) = config.clone_dir             { map.insert("SETUP_CLONE_DIR".into(),            v.clone().into()); }
+    map.insert("SETUP_WSL_DEFAULT_USER".into(), config.wsl_default_user.clone().into());
     serde_json::Value::Object(map)
 }

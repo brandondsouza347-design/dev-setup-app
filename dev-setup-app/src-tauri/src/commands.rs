@@ -48,6 +48,7 @@ pub struct ConfigInput {
     pub gitlab_pat: Option<String>,
     pub gitlab_repo_url: Option<String>,
     pub clone_dir: Option<String>,
+    pub wsl_default_user: String,
 }
 
 /// Detects the current operating system.
@@ -793,6 +794,7 @@ pub fn save_config(
         gitlab_pat: input.gitlab_pat,
         gitlab_repo_url: input.gitlab_repo_url,
         clone_dir: input.clone_dir,
+        wsl_default_user: input.wsl_default_user,
     };
     Ok(())
 }
