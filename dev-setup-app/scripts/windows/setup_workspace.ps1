@@ -8,7 +8,7 @@ $pat = if ($env:SETUP_GITLAB_PAT) { $env:SETUP_GITLAB_PAT } else { '' }
 
 # ── Locate code.cmd ───────────────────────────────────────────────────────────
 $codePath = $null
-foreach ($p in ($env:PATH -split ';')) {
+foreach ($p in ($env:PATH -split ';' | Where-Object { $_ -ne '' })) {
     $c = Join-Path $p 'code.cmd'
     if (Test-Path $c) { $codePath = $c; break }
 }
