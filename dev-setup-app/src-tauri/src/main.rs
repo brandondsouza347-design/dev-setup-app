@@ -6,7 +6,7 @@ mod commands;
 mod orchestrator;
 mod state;
 
-use state::AppState;
+use state::{AppState, CancelState};
 use std::sync::Mutex;
 
 fn main() {
@@ -22,6 +22,7 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .manage(Mutex::new(AppState::default()))
+        .manage(CancelState::new())
         .manage(admin_agent::AdminAgentState::new())
         .invoke_handler(tauri::generate_handler![
             commands::detect_os,
@@ -44,6 +45,7 @@ fn main() {
             commands::is_admin_agent_ready,
             commands::shutdown_admin_agent,
             commands::open_url,
+            commands::stop_setup,
         ])
         .setup(|_app| {
             log::info!(

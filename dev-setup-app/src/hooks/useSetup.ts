@@ -47,6 +47,7 @@ interface UseSetupReturn {
   saveConfig: (cfg: UserConfig) => Promise<void>;
   updateConfig: (cfg: UserConfig) => void;
   startSetup: () => Promise<void>;
+  stopSetup: () => Promise<void>;
   resumeSetup: () => Promise<void>;
   retryStep: (id: string) => Promise<void>;
   revertStep: (id: string) => Promise<void>;
@@ -397,6 +398,15 @@ export function useSetup(): UseSetupReturn {
     setAdminAgentError(null);
   }, []);
 
+  const stopSetup = useCallback(async () => {
+    try {
+      await invoke('stop_setup');
+    } catch (e) {
+      console.error('Stop error:', e);
+    }
+    setIsRunning(false);
+  }, []);
+
   return {
     osInfo,
     steps,
@@ -419,6 +429,7 @@ export function useSetup(): UseSetupReturn {
     saveConfig,
     updateConfig,
     startSetup,
+    stopSetup,
     resumeSetup,
     retryStep,
     revertStep,

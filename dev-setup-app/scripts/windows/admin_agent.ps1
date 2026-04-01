@@ -30,7 +30,17 @@ $SHUTDOWN_FLAG = "$DIR\agent_shutdown.flag"
 
 function Write-Log {
     param([string]$Msg)
-    "[$(Get-Date -Format 'HH:mm:ss.fff')] $Msg" | Out-File -FilePath $LOG_FILE -Append -Encoding UTF8
+    $entry = "[$(Get-Date -Format 'HH:mm:ss.fff')] $Msg"
+    # Retry up to 15 times with 1s gaps (15s max) — AV scanners (Defender)
+    # hold the log file open briefly after every write on corporate machines.
+    for ($wl = 1; $wl -le 15; $wl++) {
+        try {
+            $entry | Out-File -FilePath $LOG_FILE -Append -Encoding UTF8 -ErrorAction Stop
+            break
+        } catch {
+            if ($wl -lt 15) { Start-Sleep -Milliseconds 1000 }
+        }
+    }
 }
 
 Write-Log "Script running from: $PSCommandPath"
@@ -52,10 +62,27 @@ while ($true) {
 
     $cmdFiles = Get-ChildItem -Path $DIR -Filter "cmd_*.json" -ErrorAction SilentlyContinue
     foreach ($f in $cmdFiles) {
-        $raw  = Get-Content -LiteralPath $f.FullName -Raw -Encoding UTF8
+        # Settle delay: give the previous step's file handles (log, staged script)
+        # time to fully release before we open the agent.log for writing.
+        Start-Sleep -Milliseconds 1500
+
+        # ── Atomically claim the cmd file ─────────────────────────────────────
+        # Rename cmd_*.json → processing_*.json BEFORE doing any work.
+        # This prevents the outer while loop from picking up the same file again
+        # if Remove-Item at the end fails (e.g. AV scanner holds it open).
+        $processingFile = "$DIR\processing_$($f.BaseName -replace '^cmd_','')"
+        try {
+            Move-Item -LiteralPath $f.FullName -Destination $processingFile -Force -ErrorAction Stop
+        } catch {
+            Write-Log "Could not claim cmd file $($f.Name) ($_) — skipping to avoid double-execution"
+            continue
+        }
+
+        $raw  = Get-Content -LiteralPath $processingFile -Raw -Encoding UTF8
         $cmd  = $raw | ConvertFrom-Json
         $stepId   = $cmd.step_id
         $script   = $cmd.script
+        $runId    = if ($cmd.run_id) { $cmd.run_id } else { '' }
         $stepLog  = "$DIR\log_$stepId.txt"
         $doneFile = "$DIR\done_$stepId.json"
 
@@ -90,18 +117,32 @@ while ($true) {
             $trustedScript = "$PROG_DIR\step_$stepId.ps1"
             New-Item -ItemType Directory -Force -Path $PROG_DIR | Out-Null
 
-            # Remove any stale staged file from a previous run before writing.
-            # This prevents 'file in use by another process' errors on retry.
-            Remove-Item -Path $trustedScript -Force -ErrorAction SilentlyContinue
-            Start-Sleep -Milliseconds 200
+            # Kill any leftover powershell.exe that is still holding this step's script file.
+            # This is the primary cause of "file in use by another process" on retry —
+            # the child process from the previous attempt hasn't fully exited yet.
+            try {
+                $staleProcs = Get-WmiObject Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue |
+                    Where-Object { $_.CommandLine -like "*step_$stepId*" }
+                foreach ($proc in $staleProcs) {
+                    Write-Log "Killing stale powershell.exe (PID $($proc.ProcessId)) holding step_$stepId.ps1"
+                    Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
+                }
+                # Wait long enough for the killed process to release all file handles
+                # before we attempt to overwrite the staged script.
+                if ($staleProcs) { Start-Sleep -Seconds 3 }
+            } catch {
+                Write-Log "Warning: could not query for stale processes: $_"
+            }
 
-            # Retry the stage write a few times in case the old file handle is still releasing
-            $staged = $false
+            # Remove any stale staged file from a previous run before writing.
+            Remove-Item -Path $trustedScript -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Milliseconds 300
+
+            # Retry the stage write a few times in case the file handle is still releasing
             for ($attempt = 1; $attempt -le 5; $attempt++) {
                 try {
                     Get-Content -LiteralPath $script -Encoding UTF8 -Raw |
                         Set-Content -LiteralPath $trustedScript -Encoding UTF8
-                    $staged = $true
                     break
                 } catch {
                     if ($attempt -lt 5) {
@@ -124,15 +165,17 @@ while ($true) {
             "ERROR: $_" | Out-File -FilePath $stepLog -Append -Encoding UTF8
             $exitCode = 1
         } finally {
-            # Retry removal — child powershell.exe may not have released the file handle immediately
+            # Retry removal with generous delays — child powershell.exe may hold
+            # the file open briefly after exit (Windows file handle release is async).
+            # 30 attempts × 500ms = up to 15s wait before giving up.
             $removed = $false
-            for ($r = 1; $r -le 10; $r++) {
+            for ($r = 1; $r -le 30; $r++) {
                 try {
                     Remove-Item -Path "$PROG_DIR\step_$stepId.ps1" -Force -ErrorAction Stop
                     $removed = $true
                     break
                 } catch {
-                    Start-Sleep -Milliseconds 300
+                    Start-Sleep -Milliseconds 500
                 }
             }
             if (-not $removed) {
@@ -140,12 +183,20 @@ while ($true) {
             }
         }
 
-        # Write completion signal then remove the command file
-        # Use ASCII encoding — the content is pure ASCII and Out-File -Encoding UTF8
-        # in PowerShell 5.x adds a UTF-8 BOM which breaks serde_json parsing in Rust.
-        "{`"done`":true,`"code`":$exitCode}" | Out-File -FilePath $doneFile -Encoding ASCII -Force
+        # Write completion signal with retry — AV scanner can hold the done file
+        # open briefly, causing Out-File to fail on some corporate machines.
+        # Include run_id so Rust can reject stale done files from previous attempts.
+        $doneContent = "{`"done`":true,`"code`":$exitCode,`"run_id`":`"$runId`"}"
+        for ($dw = 1; $dw -le 15; $dw++) {
+            try {
+                $doneContent | Out-File -FilePath $doneFile -Encoding ASCII -Force -ErrorAction Stop
+                break
+            } catch {
+                if ($dw -lt 15) { Start-Sleep -Milliseconds 1000 }
+            }
+        }
         Write-Log "Step '$stepId' finished (exit code $exitCode)"
-        Remove-Item -LiteralPath $f.FullName -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $processingFile -Force -ErrorAction SilentlyContinue
     }
 
     Start-Sleep -Milliseconds 500

@@ -334,15 +334,35 @@ pub async fn execute_via_agent(
         let log_file  = agent_path(&format!("log_{}.txt", step_id));
         let done_file = agent_path(&format!("done_{}.json", step_id));
 
-        // Clean stale files
-        let _ = std::fs::remove_file(&log_file);
-        let _ = std::fs::remove_file(&done_file);
+        // Generate a unique nonce for this attempt. The agent echoes it back in
+        // the done file so we never mistake a stale done file from a previous
+        // failed attempt for the current run's completion signal.
+        let run_id = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis()
+            .to_string();
 
-        // Write the command file
+        // Retry stale file deletion — AV scanner holds files open briefly after
+        // writes, causing remove_file to silently fail with the single-shot call.
+        for f in [&log_file, &done_file] {
+            for _ in 0..20u32 {
+                if !f.exists() { break; }
+                if std::fs::remove_file(f).is_ok() { break; }
+                std::thread::sleep(std::time::Duration::from_millis(500));
+            }
+        }
+
+        // Buffer: give the agent's previous finally-block time to finish releasing
+        // file handles (staged script + log) before we queue the next command.
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+
+        // Write the command file (includes run_id nonce)
         let cmd = serde_json::json!({
             "step_id": step_id,
             "script":  script_path,
             "env":     build_env_json(config),
+            "run_id":  run_id,
         });
         std::fs::write(&cmd_file, serde_json::to_string(&cmd).unwrap().as_bytes())
             .map_err(|e| format!("Failed to write command file: {}", e))?;
@@ -392,11 +412,35 @@ pub async fn execute_via_agent(
                     all_logs.push(tail.clone());
                     emit_log(window, &step_id, &tail, lvl);
                 }
-                let done_raw = std::fs::read_to_string(&done_file).unwrap_or_default();
+                // Retry reading the done file — AV scanner can hold it open briefly
+                // right after PS writes it, causing an empty or partial read.
+                let mut done_raw = String::new();
+                for attempt in 0..10u32 {
+                    match std::fs::read_to_string(&done_file) {
+                        Ok(s) if !s.trim().is_empty() => { done_raw = s; break; }
+                        _ => {
+                            if attempt < 9 {
+                                std::thread::sleep(std::time::Duration::from_millis(500));
+                            }
+                        }
+                    }
+                }
                 // Strip UTF-8 BOM if present (PowerShell 5.x Out-File -Encoding UTF8 adds it)
-                let done_raw = done_raw.trim_start_matches('\u{feff}');
-                let code: i64 = serde_json::from_str::<serde_json::Value>(done_raw)
-                    .ok()
+                let done_str = done_raw.trim_start_matches('\u{feff}');
+                let parsed = serde_json::from_str::<serde_json::Value>(done_str).ok();
+                // Verify run_id nonce — if missing or mismatched this is a stale
+                // done file from a previous attempt; skip it and keep polling.
+                let done_run_id = parsed.as_ref()
+                    .and_then(|v| v.get("run_id"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                if !done_run_id.is_empty() && done_run_id != run_id {
+                    log::warn!("execute_via_agent: stale done file (run_id={} vs expected {}) — ignoring", done_run_id, run_id);
+                    // Delete the stale file so it doesn't block future polls
+                    let _ = std::fs::remove_file(&done_file);
+                    continue;
+                }
+                let code: i64 = parsed
                     .and_then(|v| v.get("code").and_then(|c| c.as_i64()))
                     .unwrap_or(-1);
                 let _ = std::fs::remove_file(&done_file);

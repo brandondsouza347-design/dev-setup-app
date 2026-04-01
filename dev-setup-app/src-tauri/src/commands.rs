@@ -1,9 +1,9 @@
 // commands.rs — Tauri command handlers exposed to the React frontend
 use crate::orchestrator::{execute_script_with_retry, find_step_by_id, get_revert_steps_for_os, get_steps_for_os, SetupStep};
-use crate::state::{AppState, StepStatus, UserConfig};
+use crate::state::{AppState, CancelState, StepStatus, UserConfig};
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, State, WebviewWindow};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 
 #[derive(Serialize)]
 pub struct OsInfo {
@@ -123,6 +123,19 @@ fn resolve_setup_rollback_steps(os: &str, step_id: &str) -> Result<(Vec<SetupSte
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok((setup_steps, target_index, target_step, rollback_steps))
+}
+
+/// Stops the currently running setup step by setting the cancellation flag.
+/// The running execute_script loop picks this up within ~500 ms and kills
+/// the child process, causing the current step to fail with "Stopped by user".
+#[tauri::command]
+pub async fn stop_setup(app_handle: AppHandle) -> Result<(), String> {
+    log::info!("stop_setup: user requested cancellation");
+    if let Some(cancel) = app_handle.try_state::<CancelState>() {
+        let cs: tauri::State<'_, CancelState> = cancel;
+        cs.cancel();
+    }
+    Ok(())
 }
 
 /// Starts the full setup sequence from step 0.

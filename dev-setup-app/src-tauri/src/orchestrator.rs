@@ -1,6 +1,6 @@
 // orchestrator.rs — Step definitions and script execution engine
 use crate::admin_agent::{execute_via_agent, AdminAgentState, ADMIN_STEP_IDS};
-use crate::state::UserConfig;
+use crate::state::{CancelState, UserConfig};
 use serde::{Deserialize, Serialize};
 use std::process::Stdio;
 use std::time::Instant;
@@ -448,6 +448,16 @@ fn all_steps() -> Vec<SetupStep> {
             rollback_steps: vec![],
         },
         SetupStep {
+            id: "install_workspace_extensions".to_string(),
+            title: "Install Workspace Extensions".to_string(),
+            description: "Install all recommended extensions from Propello.code-workspace into the ERC WSL remote and the local Windows VS Code.".to_string(),
+            platform: Platform::Windows,
+            category: StepCategory::Editor,
+            required: false,
+            estimated_minutes: 3,
+            rollback_steps: vec![],
+        },
+        SetupStep {
             id: "python_interpreter".to_string(),
             title: "Configure Python Interpreter".to_string(),
             description: "Display step-by-step instructions for selecting the pyenv virtualenv as VS Code's Python interpreter.".to_string(),
@@ -635,14 +645,24 @@ pub async fn execute_script(
         "pyenv" | "pyenv_wsl" => 1800,      // 30 min
         "import_wsl_tar" => 1800,           // 30 min
         "revert_wsl_distro" => 1800,        // 30 min
+        "clone_repo" | "clone_repo_mac" => 3600, // 60 min — large repo on first clone
         _ => 900,                           // 15 min default
     };
     let timeout = std::time::Duration::from_secs(timeout_secs);
     let timeout_handle = tokio::time::sleep(timeout);
     tokio::pin!(timeout_handle);
 
+    // Poll the cancel flag every 500 ms so the user can stop the process.
+    let mut cancel_ticker = tokio::time::interval(std::time::Duration::from_millis(500));
+    cancel_ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let cancel_state: Option<tauri::State<'_, CancelState>> = app_handle.try_state::<CancelState>();
+    // Reset any stale cancellation from a previous stop before entering the loop.
+    if let Some(ref cs) = cancel_state {
+        cs.reset();
+    }
+
     // Drain the merged channel until both tasks have finished and dropped their senders
-    // or timeout is reached
+    // or timeout / user cancellation is triggered.
     loop {
         tokio::select! {
             maybe_line = rx.recv() => {
@@ -673,6 +693,17 @@ pub async fn execute_script(
                     LogLevel::Error,
                 );
                 return Err(format!("Script timeout after {}s", timeout_secs));
+            }
+            _ = cancel_ticker.tick() => {
+                if cancel_state.as_ref().map(|cs| cs.is_cancelled()).unwrap_or(false) {
+                    log::warn!("execute_script: step '{}' cancelled by user — killing process", step.id);
+                    let _ = child.kill().await;
+                    if let Some(ref cs) = cancel_state {
+                        cs.reset();
+                    }
+                    emit_log(&window, &step.id, "⚠ Setup stopped by user", LogLevel::Warn);
+                    return Err("Stopped by user".to_string());
+                }
             }
         }
     }
@@ -716,13 +747,17 @@ pub async fn execute_script_with_retry(
                 "execute_script_with_retry: step '{}' failed on attempt 1 ({}) — retrying in 2s",
                 step.id, err
             );
+            // Admin steps go through the elevated agent which stages scripts to disk.
+            // Corporate AV scanners hold staged files open after writes, so we need
+            // a longer buffer to let handles release before the retry.
+            let retry_secs: u64 = if ADMIN_STEP_IDS.contains(&step.id.as_str()) { 20 } else { 8 };
             emit_log(
                 &window,
                 &step.id,
-                "⚠ Transient failure — retrying once after 8s (common on first run)...",
+                &format!("⚠ Transient failure — retrying once after {}s (common on first run)...", retry_secs),
                 LogLevel::Warn,
             );
-            tokio::time::sleep(std::time::Duration::from_secs(8)).await;
+            tokio::time::sleep(std::time::Duration::from_secs(retry_secs)).await;
             execute_script(window, app_handle, step, config).await
         }
     }
@@ -750,7 +785,7 @@ fn build_script_command(
         "git_ssh_windows"=>("windows","setup_git_ssh.sh",         "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
         "pyenv_wsl"       => ("windows", "setup_pyenv_wsl.sh",         "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
         "nvm_wsl"          => ("windows", "setup_nvm_wsl.sh",           "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
-        "ubuntu_user_wsl"  => ("windows", "setup_ubuntu_user_wsl.sh",   "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
+        "ubuntu_user_wsl"  => ("windows", "setup_ubuntu_user_wsl.sh",   "wsl",        vec!["-d".to_string(), "ERC".to_string(), "-u".to_string(), "root".to_string(), "bash".to_string()]),
         "postgres_wsl"     => ("windows", "setup_postgres_wsl.sh",      "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
         "redis_wsl"        => ("windows", "setup_redis_wsl.sh",         "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
         // Windows-side PowerShell scripts
@@ -764,6 +799,7 @@ fn build_script_command(
         "clone_repo"           => ("windows", "clone_repo.sh",                 "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
         "pyenv_local"          => ("windows", "pyenv_local.sh",                "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
         "setup_workspace"      => ("windows", "setup_workspace.ps1",          "powershell", vec![]),
+        "install_workspace_extensions" => ("windows", "install_workspace_extensions.ps1", "powershell", vec![]),
         "python_interpreter"   => ("windows", "python_interpreter.sh",        "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
         // macOS GitLab onboarding track
         "install_openvpn_mac"     => ("macos", "install_openvpn.sh",     "bash", vec![]),

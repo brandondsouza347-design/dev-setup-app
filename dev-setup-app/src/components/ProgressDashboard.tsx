@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   CheckCircle2, XCircle, Loader2, SkipForward, RotateCcw,
-  ChevronDown, ChevronRight, Terminal, Clock, ScrollText, Undo2
+  ChevronDown, ChevronRight, Terminal, Clock, ScrollText, Undo2, StopCircle
 } from 'lucide-react';
 import type { SetupStep, StepResult, LogEntry, WizardPage } from '../types';
 import { StepBadge } from './StepBadge';
@@ -21,6 +21,7 @@ interface Props {
   onSkip: (id: string) => Promise<void>;
   onContinue: () => Promise<void>;
   onOpenTerminal: () => void;
+  onStop: () => Promise<void>;
   onGoTo: (page: WizardPage) => void;
 }
 
@@ -41,6 +42,7 @@ export const ProgressDashboard: React.FC<Props> = ({
   onSkip,
   onContinue,
   onOpenTerminal,
+  onStop,
   onGoTo,
 }) => {
   const [expandedStep, setExpandedStep] = useState<string | null>(null);
@@ -130,6 +132,16 @@ export const ProgressDashboard: React.FC<Props> = ({
               </span>
             )}
             <span>{steps.length - doneCount - failedCount} remaining</span>
+            {isRunning && (
+              <button
+                onClick={onStop}
+                className="flex items-center gap-1 px-3 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                title="Stop the current step"
+              >
+                <StopCircle className="w-3.5 h-3.5" />
+                Stop
+              </button>
+            )}
           </div>
         </div>
         {/* Progress bar */}

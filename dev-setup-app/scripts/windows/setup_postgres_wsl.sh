@@ -9,11 +9,18 @@ PG_DB="${SETUP_POSTGRES_DB:-toogo_pos}"
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 # In tar-imported WSL, /run is a tmpfs that is empty on every WSL start.
 # PostgreSQL needs /run/postgresql to exist with correct ownership before it
-# can create its Unix socket — this is the most common cause of startup hangs.
+# can create its Unix socket.
+# NOTE: plain `sudo` is used here — sudo -n was removed because NOPASSWD is
+# now guaranteed by setup_ubuntu_user_wsl.sh writing the sudoers file.
 ensure_pg_socket_dir() {
     local run_dir="/run/postgresql"
-    
-    # Check if directory exists and has correct ownership
+
+    # Remove any stale postmaster.pid that would block a fresh startup
+    for f in /var/lib/postgresql/*/main/postmaster.pid; do
+        [ -f "$f" ] && sudo rm -f "$f" 2>/dev/null && echo "  Removed stale $f" || true
+    done
+
+    # Check if directory already exists with correct ownership
     if [ -d "$run_dir" ]; then
         local owner
         owner="$(stat -c '%U:%G' "$run_dir" 2>/dev/null || echo '')"
@@ -21,75 +28,68 @@ ensure_pg_socket_dir() {
             echo "  $run_dir already exists with correct ownership"
             return 0
         fi
-        echo "  $run_dir exists but has wrong ownership ($owner) — fixing..."
-    fi
-    
-    # Create or fix the directory with timeout to prevent hangs
-    # (mkdir/chown can hang in rare WSL edge cases with filesystem locks)
-    if [ ! -d "$run_dir" ]; then
-        echo "  Creating $run_dir..."
-        if ! timeout 10 sudo mkdir -p "$run_dir" 2>&1; then
-            echo "  WARNING: mkdir timed out or failed — attempting to continue anyway"
-        fi
-    fi
-    
-    # Set ownership and permissions with timeout
-    if [ -d "$run_dir" ]; then
-        if timeout 10 sudo chown postgres:postgres "$run_dir" 2>&1 && \
-           timeout 10 sudo chmod 775 "$run_dir" 2>&1; then
-            echo "  $run_dir configured successfully"
-        else
-            echo "  WARNING: chown/chmod timed out — attempting to continue anyway"
-        fi
+        echo "  $run_dir exists but wrong ownership ($owner) — fixing..."
     else
-        echo "  WARNING: $run_dir does not exist and could not be created"
+        echo "  Creating $run_dir..."
+        sudo mkdir -p "$run_dir"
     fi
-    
-    # Remove any stale postmaster.pid that would block a fresh startup
-    for f in /var/lib/postgresql/*/main/postmaster.pid; do
-        if [ -f "$f" ]; then
-            timeout 5 sudo rm -f "$f" 2>&1 && echo "  Removed stale $f" || true
-        fi
-    done
+
+    sudo chown postgres:postgres "$run_dir"
+    sudo chmod 775 "$run_dir"
+    echo "  $run_dir configured"
 }
 
 start_postgres() {
-    ensure_pg_socket_dir
-
-    # Prefer pg_ctlcluster — it is more direct than init.d in non-systemd WSL
     local ver
     ver="$(pg_lsclusters --no-header 2>/dev/null | awk '{print $1}' | head -1 || true)"
+
+    # ── Pre-flight: socket dir ────────────────────────────────────────────────
+    ensure_pg_socket_dir
+
+    # ── Pre-flight: data directory ownership ─────────────────────────────────
+    if [ -n "$ver" ] && [ -d "/var/lib/postgresql/$ver/main" ]; then
+        echo "  Fixing data directory ownership..."
+        sudo chown -R postgres:postgres "/var/lib/postgresql/$ver/main" 2>/dev/null || true
+    fi
+
+    # ── Pre-flight: port conflict check ──────────────────────────────────────
+    if ss -ltnp 2>/dev/null | grep -q ':5432 '; then
+        echo "  WARNING: Port 5432 already in use — attempting to start anyway:"
+        ss -ltnp 2>/dev/null | grep ':5432' || true
+    fi
+
+    # ── Start via pg_ctlcluster ───────────────────────────────────────────────
     if [ -n "$ver" ]; then
-        echo "  Starting via pg_ctlcluster $ver main..."
-        # Run with timeout and capture stderr to diagnose hangs
-        if timeout 30 sudo pg_ctlcluster "$ver" main start 2>&1; then
-            echo "  pg_ctlcluster returned successfully"
+        local cluster_status
+        cluster_status="$(pg_lsclusters --no-header 2>/dev/null | awk '{print $4}' | head -1 || echo 'down')"
+        echo "  Cluster $ver/main status: $cluster_status"
+
+        if [ "$cluster_status" = "online" ]; then
+            echo "  Cluster is already online"
         else
-            local exit_code=$?
-            if [ $exit_code -eq 124 ]; then
-                echo "  WARNING: pg_ctlcluster timed out after 30s"
+            if [ "$cluster_status" = "broken" ]; then
+                echo "  Cluster is broken — recreating cluster (non-destructive config reset)..."
+                sudo pg_dropcluster "$ver" main --stop 2>/dev/null || true
+                sudo pg_createcluster "$ver" main 2>&1 || true
+                ensure_pg_socket_dir
+            fi
+
+            echo "  Starting via pg_ctlcluster $ver main..."
+            if sudo pg_ctlcluster "$ver" main start 2>&1; then
+                echo "  pg_ctlcluster returned successfully"
             else
-                echo "  WARNING: pg_ctlcluster exited with code $exit_code"
+                echo "  WARNING: pg_ctlcluster exited with code $?"
             fi
         fi
     fi
 
-    # Fallback to service if pg_ctlcluster did not bring it up
+    # ── Fallback: service ────────────────────────────────────────────────────
     if ! pg_isready -q 2>/dev/null; then
         echo "  Falling back to: service postgresql start..."
-        if timeout 30 sudo service postgresql start 2>&1; then
-            echo "  service postgresql start returned"
-        else
-            local exit_code=$?
-            if [ $exit_code -eq 124 ]; then
-                echo "  WARNING: service postgresql start timed out after 30s"
-            else
-                echo "  WARNING: service postgresql start exited with code $exit_code"
-            fi
-        fi
+        sudo service postgresql start 2>&1 || true
     fi
 
-    # Poll until ready — 10 attempts × 2 s = 20 s maximum wait
+    # ── Poll until ready — 10 × 2 s = 20 s ───────────────────────────────────
     echo "  Polling pg_isready (max 20s)..."
     local i=0
     while [ $i -lt 10 ]; do
@@ -102,16 +102,20 @@ start_postgres() {
         i=$((i + 1))
     done
 
+    # ── Failure diagnostics ───────────────────────────────────────────────────
     echo "  ERROR: PostgreSQL did not start within 20 seconds."
-    echo "  Diagnostic information:"
     echo "  ─────────────────────────────────────────────────────────"
-    sudo pg_lsclusters 2>/dev/null || echo "  pg_lsclusters failed"
+    echo "  Cluster status:"
+    pg_lsclusters 2>/dev/null || echo "  pg_lsclusters failed"
     echo ""
-    if [ -d /var/log/postgresql ]; then
-        echo "  Last 20 lines of PostgreSQL log:"
-        sudo tail -20 /var/log/postgresql/postgresql-*.log 2>/dev/null || echo "  No logs found"
-    else
-        echo "  /var/log/postgresql does not exist"
+    echo "  Port 5432 status:"
+    ss -ltnp 2>/dev/null | grep ':5432' || echo "  Nothing listening on 5432"
+    echo ""
+    echo "  Last 30 lines of PostgreSQL log:"
+    if [ -n "$ver" ]; then
+        sudo tail -30 "/var/log/postgresql/postgresql-${ver}-main.log" 2>/dev/null \
+            || sudo tail -30 /var/log/postgresql/postgresql-*.log 2>/dev/null \
+            || echo "  No logs found"
     fi
     echo "  ─────────────────────────────────────────────────────────"
     return 1

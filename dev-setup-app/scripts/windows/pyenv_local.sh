@@ -19,8 +19,10 @@ if [ ! -d "$CLONE_DIR" ]; then
     exit 1
 fi
 
-# Verify the virtualenv exists in pyenv
-if ! pyenv versions --bare 2>/dev/null | grep -qx "$VENV_NAME"; then
+# Verify the virtualenv exists in pyenv.
+# pyenv versions --bare can prefix entries with spaces on some versions,
+# so strip whitespace before comparing.
+if ! pyenv versions --bare 2>/dev/null | sed 's/^[[:space:]]*//' | grep -qx "$VENV_NAME"; then
     echo "⚠ pyenv version '$VENV_NAME' not found."
     echo "  Available pyenv versions:"
     pyenv versions --bare 2>/dev/null || echo "  (none)"

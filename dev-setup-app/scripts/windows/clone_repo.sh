@@ -53,37 +53,23 @@ if $REPO_VALID; then
 
     echo "✓ Repository is up to date."
 else
-    echo "→ Cloning repository (progress reported every 30s)..."
+    echo "→ Cloning repository (live progress below)..."
 
-    # Clone in background so we can print periodic progress
-    GIT_LOG=$(mktemp)
+    # git --progress outputs carriage-return separated percentage lines to stderr.
+    # We capture stderr line-by-line using process substitution so we can print
+    # each percentage update as it arrives (no 30s polling delay).
+    GIT_EXIT=0
     GIT_TERMINAL_PROMPT=0 \
-    GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes" \
-        git clone --progress "$REPO_URL" "$CLONE_DIR" >"$GIT_LOG" 2>&1 &
-    GIT_PID=$!
-
-    ELAPSED=0
-    while kill -0 "$GIT_PID" 2>/dev/null; do
-        sleep 30
-        ELAPSED=$((ELAPSED + 30))
-        RESOLVING=$(grep -oE 'Resolving deltas:[[:space:]]+[0-9]+%[^,]*' "$GIT_LOG" 2>/dev/null | tail -1 || true)
-        PROGRESS=$(grep -oE 'Receiving objects:[[:space:]]+[0-9]+%[^,]*' "$GIT_LOG" 2>/dev/null | tail -1 || true)
-        if [ -n "$RESOLVING" ]; then
-            echo "  [${ELAPSED}s] $RESOLVING"
-        elif [ -n "$PROGRESS" ]; then
-            echo "  [${ELAPSED}s] $PROGRESS"
-        else
-            echo "  [${ELAPSED}s] Cloning in progress..."
-        fi
-    done
-
-    wait "$GIT_PID"
-    GIT_EXIT=$?
-    cat "$GIT_LOG"
-    rm -f "$GIT_LOG"
+    GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=30 -o ServerAliveInterval=30 -o ServerAliveCountMax=10" \
+        git clone --progress "$REPO_URL" "$CLONE_DIR" 2>&1 | \
+        while IFS= read -r line; do
+            # git uses \r to overwrite percentage lines — split on \r and print last chunk
+            last="$(printf '%s' "$line" | tr '\r' '\n' | grep -v '^$' | tail -1)"
+            [ -n "$last" ] && echo "  $last"
+        done || GIT_EXIT=${PIPESTATUS[0]}
 
     if [ "$GIT_EXIT" -ne 0 ]; then
-        echo "✗ git clone failed (exit code $GIT_EXIT). Check SSH key and VPN connectivity."
+        echo "✗ git clone failed (exit $GIT_EXIT) — check SSH key and VPN connectivity."
         exit "$GIT_EXIT"
     fi
     echo "✓ Repository cloned successfully to $CLONE_DIR"

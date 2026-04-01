@@ -96,6 +96,7 @@ function App() {
             onSkip={setup.skipStep}
             onContinue={setup.resumeSetup}
             onOpenTerminal={setup.openTerminal}
+            onStop={setup.stopSetup}
             onGoTo={setup.setPage}
           />
         )}

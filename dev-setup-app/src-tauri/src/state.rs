@@ -1,6 +1,7 @@
 // state.rs — Application state management
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -107,5 +108,28 @@ impl AppState {
         self.current_step_index = 0;
         self.setup_started = false;
         self.setup_complete = false;
+    }
+}
+
+/// Shared cancellation flag. Managed independently of AppState so it can be
+/// read inside async execute_script without holding the AppState mutex.
+pub struct CancelState {
+    cancel_requested: AtomicBool,
+}
+
+impl CancelState {
+    pub fn new() -> Self {
+        CancelState {
+            cancel_requested: AtomicBool::new(false),
+        }
+    }
+    pub fn cancel(&self) {
+        self.cancel_requested.store(true, Ordering::SeqCst);
+    }
+    pub fn reset(&self) {
+        self.cancel_requested.store(false, Ordering::SeqCst);
+    }
+    pub fn is_cancelled(&self) -> bool {
+        self.cancel_requested.load(Ordering::SeqCst)
     }
 }
