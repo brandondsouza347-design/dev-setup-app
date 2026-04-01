@@ -7,17 +7,18 @@ if (-not $cloneDir) { $cloneDir = '/home/ubuntu/VsCodeProjects/erc' }
 $pat = if ($env:SETUP_GITLAB_PAT) { $env:SETUP_GITLAB_PAT } else { '' }
 
 # ── Locate code.cmd ───────────────────────────────────────────────────────────
+# Use -LiteralPath to avoid PS5.1 treating [ ] in PATH entries as wildcards
 $codePath = $null
 foreach ($p in ($env:PATH -split ';' | Where-Object { $_ -ne '' })) {
     $c = Join-Path $p 'code.cmd'
-    if (Test-Path $c) { $codePath = $c; break }
+    if (Test-Path -LiteralPath $c) { $codePath = $c; break }
 }
 if (-not $codePath) {
     foreach ($c in @(
         "$env:LOCALAPPDATA\Programs\Microsoft VS Code\bin\code.cmd",
         "$env:ProgramFiles\Microsoft VS Code\bin\code.cmd"
     )) {
-        if (Test-Path $c) { $codePath = $c; break }
+        if (Test-Path -LiteralPath $c) { $codePath = $c; break }
     }
 }
 
@@ -137,16 +138,16 @@ if (-not $wsContent) {
 # ═════════════════════════════════════════════════════════════════════════════
 Write-Output "→ Sub-task 3/3: Opening VS Code workspace..."
 
-# Convert WSL path to \\wsl.localhost UNC path
-$linuxPath = $cloneDir.TrimStart('/')
-$uncPath = "\\wsl.localhost\ERC\$($linuxPath.Replace('/', '\'))\Propello.code-workspace"
+# Build a vscode-remote URI so the workspace opens under WSL: ERC (remote mode)
+# rather than as a Windows UNC path (which opens in local/Windows mode).
+$wsFileUri = "vscode-remote://wsl+ERC$cloneDir/Propello.code-workspace"
 
 if ($codePath) {
-    & $codePath $uncPath 2>&1 | Out-Null
-    Write-Output "✓ VS Code workspace opened: $uncPath"
+    & $codePath --file-uri $wsFileUri 2>&1 | Out-Null
+    Write-Output "✓ VS Code workspace opened in WSL remote mode: $wsFileUri"
 } else {
     Write-Output "⚠ code.cmd not found. Open workspace manually:"
-    Write-Output "  $uncPath"
+    Write-Output "  code --file-uri $wsFileUri"
 }
 
 Write-Output "✓ setup_workspace complete."

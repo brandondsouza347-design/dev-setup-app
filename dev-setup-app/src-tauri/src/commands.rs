@@ -168,6 +168,22 @@ pub async fn start_setup(
             continue;
         }
 
+        // Add a 5-second delay after setup_workspace to let VS Code stabilize
+        // before attempting to install extensions in the next step
+        if idx > 0 {
+            let prev_step = &steps[idx - 1];
+            if prev_step.id == "setup_workspace" || prev_step.id == "setup_workspace_mac" {
+                log::info!("start_setup: pausing 5s after '{}' for VS Code to stabilize", prev_step.id);
+                emit_frontend_log(
+                    &window,
+                    &step.id,
+                    "⏸ Waiting 5 seconds for VS Code to stabilize...",
+                    "info",
+                );
+                tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+            }
+        }
+
         // Mark running
         {
             let mut s = state.lock().unwrap();
