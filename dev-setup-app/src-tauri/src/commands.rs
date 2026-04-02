@@ -604,12 +604,13 @@ pub async fn check_prerequisites() -> Vec<PrereqCheck> {
         checks.push(check_command_available("git", "Git"));
         checks.push(check_command_available("curl", "curl"));
         checks.push(check_command_available("bash", "bash"));
+        checks.push(check_openvpn_installed(&os.os));
         checks.push(check_vpn_connectivity().await);
     } else if os.os == "windows" {
-        checks.push(check_admin_rights());
         checks.push(check_command_available("wsl", "WSL"));
         checks.push(check_command_available("winget", "winget"));
         checks.push(check_command_available("powershell", "PowerShell"));
+        checks.push(check_openvpn_installed(&os.os));
         checks.push(check_vpn_connectivity().await);
     }
 
@@ -629,6 +630,10 @@ pub struct PrereqCheck {
     pub passed: bool,
     pub warning: bool,
     pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actionable: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action_id: Option<String>,
 }
 
 fn check_command_available(cmd: &str, label: &str) -> PrereqCheck {
@@ -654,6 +659,8 @@ fn check_command_available(cmd: &str, label: &str) -> PrereqCheck {
         } else {
             format!("{} not found in PATH", label)
         },
+        actionable: None,
+        action_id: None,
     }
 }
 
@@ -673,6 +680,8 @@ async fn check_vpn_connectivity() -> PrereqCheck {
                 passed: true,
                 warning: false,
                 message: "gitlab.toogoerp.net is reachable — VPN is connected.".to_string(),
+                actionable: None,
+                action_id: None,
             }
         }
         _ => {
@@ -681,7 +690,9 @@ async fn check_vpn_connectivity() -> PrereqCheck {
                 name: "GitLab VPN Connectivity".to_string(),
                 passed: false,
                 warning: true,
-                message: "Cannot reach gitlab.toogoerp.net:443. Connect to VPN before running GitLab steps. You can continue; GitLab steps will fail without VPN.".to_string(),
+                message: "Cannot reach gitlab.toogoerp.net:443. VPN required for GitLab SSH key upload and repository cloning. Click 'Connect to VPN' to proceed.".to_string(),
+                actionable: Some(true),
+                action_id: Some("connect_vpn".to_string()),
             }
         }
     }
@@ -726,6 +737,8 @@ fn check_disk_space() -> PrereqCheck {
         message: home
             .map(|p| format!("Home directory: {}", p.display()))
             .unwrap_or_else(|| "Could not determine home directory".to_string()),
+        actionable: None,
+        action_id: None,
     }
 }
 
@@ -757,6 +770,8 @@ fn check_admin_rights() -> PrereqCheck {
             } else {
                 "Not running as Administrator — use the 'Enable Admin Steps' button below to grant elevated access for WSL steps.".to_string()
             },
+            actionable: None,
+            action_id: None,
         };
     }
     #[allow(unreachable_code)]
@@ -765,6 +780,167 @@ fn check_admin_rights() -> PrereqCheck {
         passed: true,
         warning: false,
         message: "Not applicable on this platform".to_string(),
+        actionable: None,
+        action_id: None,
+    }
+}
+
+fn check_openvpn_installed(os: &str) -> PrereqCheck {
+    let (app_name, check_cmd) = if os == "windows" {
+        ("OpenVPN", "openvpn")
+    } else {
+        ("Tunnelblick", "tunnelblick")
+    };
+
+    let installed = if os == "windows" {
+        // Check if OpenVPN is installed via common paths
+        std::path::Path::new(r"C:\Program Files\OpenVPN\bin\openvpn.exe").exists()
+            || std::path::Path::new(r"C:\Program Files (x86)\OpenVPN\bin\openvpn.exe").exists()
+            || which::which("openvpn").is_ok()
+    } else {
+        // Check if Tunnelblick is installed on macOS
+        std::path::Path::new("/Applications/Tunnelblick.app").exists()
+    };
+
+    log::info!("check_openvpn_installed: os={}, app={}, installed={}", os, app_name, installed);
+
+    PrereqCheck {
+        name: format!("{} (VPN Client)", app_name),
+        passed: installed,
+        warning: !installed,
+        message: if installed {
+            format!("{} is installed", app_name)
+        } else {
+            format!("{} not found. Required to access corporate GitLab server for SSH keys and repository cloning. Click 'Install {}' to set up VPN access.", app_name, app_name)
+        },
+        actionable: Some(!installed),
+        action_id: Some("install_openvpn".to_string()),
+    }
+}
+
+/// Executes the OpenVPN installation script as a pre-check action.
+/// Windows: installs OpenVPN via winget
+/// macOS: installs Tunnelblick via Homebrew
+#[tauri::command]
+pub async fn install_openvpn_prereq(
+    window: WebviewWindow,
+    app_handle: AppHandle,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<(), String> {
+    let os = detect_os();
+    let (step_id, title, description) = if os.os == "windows" {
+        (
+            "install_openvpn",
+            "Install OpenVPN",
+            "Installing OpenVPN via winget and configuring VPN access",
+        )
+    } else {
+        (
+            "install_openvpn_mac",
+            "Install Tunnelblick",
+            "Installing Tunnelblick via Homebrew for VPN access",
+        )
+    };
+
+    log::info!("install_openvpn_prereq: executing {} for os={}", step_id, os.os);
+    emit_frontend_log(&window, "__prereq_action__", &format!("▶ {}", title), "info");
+    emit_frontend_log(&window, "__prereq_action__", description, "info");
+
+    // Create a minimal SetupStep for script execution
+    let step = SetupStep {
+        id: step_id.to_string(),
+        title: title.to_string(),
+        description: description.to_string(),
+        platform: if os.os == "windows" {
+            crate::orchestrator::Platform::Windows
+        } else {
+            crate::orchestrator::Platform::MacOs
+        },
+        category: crate::orchestrator::StepCategory::Network,
+        required: true,
+        estimated_minutes: 3,
+        rollback_steps: vec![],
+    };
+
+    let config = {
+        let s = state.lock().unwrap();
+        s.config.clone()
+    };
+
+    let result = execute_script_with_retry(window.clone(), app_handle.clone(), &step, &config).await;
+
+    match result {
+        Ok(_) => {
+            emit_frontend_log(&window, "__prereq_action__", &format!("✓ {} installed successfully", title), "success");
+            Ok(())
+        }
+        Err(e) => {
+            emit_frontend_log(&window, "__prereq_action__", &format!("✗ Installation failed: {}", e), "error");
+            Err(e)
+        }
+    }
+}
+
+/// Executes the VPN connection script as a pre-check action.
+/// Windows: launches OpenVPN
+/// macOS: launches Tunnelblick
+#[tauri::command]
+pub async fn connect_vpn_prereq(
+    window: WebviewWindow,
+    app_handle: AppHandle,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<(), String> {
+    let os = detect_os();
+    let (step_id, title, description) = if os.os == "windows" {
+        (
+            "connect_vpn",
+            "Connect to VPN",
+            "Launching OpenVPN and waiting for GitLab connectivity",
+        )
+    } else {
+        (
+            "connect_vpn_mac",
+            "Connect to VPN",
+            "Launching Tunnelblick and waiting for GitLab connectivity",
+        )
+    };
+
+    log::info!("connect_vpn_prereq: executing {} for os={}", step_id, os.os);
+    emit_frontend_log(&window, "__prereq_action__", &format!("▶ {}", title), "info");
+    emit_frontend_log(&window, "__prereq_action__", description, "info");
+
+    // Create a minimal SetupStep for script execution
+    let step = SetupStep {
+        id: step_id.to_string(),
+        title: title.to_string(),
+        description: description.to_string(),
+        platform: if os.os == "windows" {
+            crate::orchestrator::Platform::Windows
+        } else {
+            crate::orchestrator::Platform::MacOs
+        },
+        category: crate::orchestrator::StepCategory::Network,
+        required: true,
+        estimated_minutes: 3,
+        rollback_steps: vec![],
+    };
+
+    let config = {
+        let s = state.lock().unwrap();
+        s.config.clone()
+    };
+
+    let result = execute_script_with_retry(window.clone(), app_handle.clone(), &step, &config).await;
+
+    match result {
+        Ok(_) => {
+            emit_frontend_log(&window, "__prereq_action__", "✓ VPN connected successfully", "success");
+            Ok(())
+        }
+        Err(e) => {
+            emit_frontend_log(&window, "__prereq_action__", &format!("✗ VPN connection failed: {}", e), "error");
+            Err(e)
+        }
     }
 }
 

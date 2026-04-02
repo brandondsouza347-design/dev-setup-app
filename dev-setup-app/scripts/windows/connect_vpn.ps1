@@ -59,7 +59,19 @@ if (-not $ovpnFile) {
 }
 
 Write-Output "  Launching OpenVPN with profile: $(Split-Path -Leaf $ovpnFile)"
-Start-Process -FilePath $exePath -ArgumentList "--connect `"$ovpnFile`"" -ErrorAction SilentlyContinue
+
+# Check if OpenVPN GUI is already running
+$profileName = [System.IO.Path]::GetFileNameWithoutExtension($ovpnFile)
+$existingProcess = Get-Process -Name "openvpn-gui" -ErrorAction SilentlyContinue
+
+if ($existingProcess) {
+    Write-Output "  OpenVPN GUI already running — using IPC command"
+    Start-Process -FilePath $exePath -ArgumentList "--command", "connect", $profileName -WindowStyle Hidden -ErrorAction SilentlyContinue
+} else {
+    Write-Output "  Starting new OpenVPN GUI instance"
+    Start-Process -FilePath $exePath -ArgumentList "--connect", "`"$ovpnFile`"" -WindowStyle Hidden -ErrorAction SilentlyContinue
+}
+
 Write-Output "  OpenVPN process started — waiting for tunnel to establish..."
 
 # Poll for up to 3 minutes (36 × 5s), log every 30s

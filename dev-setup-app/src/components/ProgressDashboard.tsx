@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   CheckCircle2, XCircle, Loader2, SkipForward, RotateCcw,
-  ChevronDown, ChevronRight, Terminal, Clock, ScrollText, Undo2, StopCircle
+  ChevronDown, ChevronRight, Terminal, Clock, ScrollText, Undo2, StopCircle, Trash2
 } from 'lucide-react';
 import type { SetupStep, StepResult, LogEntry, WizardPage } from '../types';
 import { StepBadge } from './StepBadge';
@@ -23,6 +23,7 @@ interface Props {
   onOpenTerminal: () => void;
   onStop: () => Promise<void>;
   onGoTo: (page: WizardPage) => void;
+  onClearLogs: () => void;
 }
 
 // Extend LogEntry with ts field for use internally
@@ -44,6 +45,7 @@ export const ProgressDashboard: React.FC<Props> = ({
   onOpenTerminal,
   onStop,
   onGoTo,
+  onClearLogs,
 }) => {
   const [expandedStep, setExpandedStep] = useState<string | null>(null);
   const [retrying, setRetrying] = useState<string | null>(null);
@@ -280,21 +282,23 @@ export const ProgressDashboard: React.FC<Props> = ({
                 </div>
               </div>
 
-              {/* Log panel */}
-              {isExpanded && (
-                <div className="border-t border-gray-100 dark:border-gray-700">
-                  <div className="p-3 bg-gray-950 rounded-b-xl max-h-80 overflow-y-auto font-mono text-xs">
-                    {stepLogs.length === 0 ? (
-                      <p className="text-gray-500 italic">No output yet.</p>
-                    ) : (
-                      stepLogs.map((entry, i) => (
-                        <LogLine key={i} entry={entry} />
-                      ))
-                    )}
-                    <div ref={bottomRef} />
-                  </div>
+              {/* Log panel with smooth transition */}
+              <div
+                className={`border-t border-gray-100 dark:border-gray-700 transition-all duration-300 ease-in-out overflow-hidden ${
+                  isExpanded ? 'max-h-80' : 'max-h-0 border-t-0'
+                }`}
+              >
+                <div className="p-3 bg-gray-950 rounded-b-xl max-h-80 overflow-y-auto font-mono text-xs">
+                  {stepLogs.length === 0 ? (
+                    <p className="text-gray-500 italic">No output yet.</p>
+                  ) : (
+                    stepLogs.map((entry, i) => (
+                      <LogLine key={i} entry={entry} />
+                    ))
+                  )}
+                  <div ref={bottomRef} />
                 </div>
-              )}
+              </div>
             </div>
           );
         })}
@@ -316,9 +320,23 @@ export const ProgressDashboard: React.FC<Props> = ({
               </span>
             )}
           </span>
-          {logsOpen
-            ? <ChevronDown className="w-4 h-4 text-gray-400" />
-            : <ChevronRight className="w-4 h-4 text-gray-400" />}
+          <div className="flex items-center gap-2">
+            {allLogs.length > 0 && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onClearLogs();
+                }}
+                className="p-1.5 text-gray-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                title="Clear logs"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
+            {logsOpen
+              ? <ChevronDown className="w-4 h-4 text-gray-400" />
+              : <ChevronRight className="w-4 h-4 text-gray-400" />}
+          </div>
         </button>
 
         {logsOpen && (

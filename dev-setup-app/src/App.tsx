@@ -49,6 +49,12 @@ function App() {
               adminAgentLogs={setup.adminAgentLogs}
               onRequestAdminAgent={setup.requestAdminAgent}
               onShutdownAdminAgent={setup.shutdownAdminAgent}
+              onPrereqAction={setup.handlePrereqAction}
+              config={setup.config}
+              onUpdateConfig={setup.updateConfig}
+              onSaveConfig={setup.saveConfig}
+              prereqLogs={setup.prereqLogs}
+              onClearPrereqLogs={setup.clearPrereqLogs}
             />
           </div>
         )}
@@ -98,6 +104,7 @@ function App() {
             onOpenTerminal={setup.openTerminal}
             onStop={setup.stopSetup}
             onGoTo={setup.setPage}
+            onClearLogs={setup.clearLogs}
           />
         )}
 

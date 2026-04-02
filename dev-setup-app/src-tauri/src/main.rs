@@ -36,6 +36,8 @@ fn main() {
             commands::get_state,
             commands::reset_state,
             commands::check_prerequisites,
+            commands::install_openvpn_prereq,
+            commands::connect_vpn_prereq,
             commands::open_terminal,
             commands::get_config,
             commands::save_config,

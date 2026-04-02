@@ -1,7 +1,15 @@
 // components/PrereqScreen.tsx — Pre-flight checks before setup
 import React, { useEffect } from 'react';
-import { CheckCircle, XCircle, RefreshCw, ChevronRight, ChevronLeft, ShieldCheck, ShieldAlert, Loader2, ShieldOff, AlertTriangle } from 'lucide-react';
-import type { PrereqCheck, WizardPage, AdminAgentStatus } from '../types';
+import { CheckCircle, XCircle, RefreshCw, ChevronRight, ChevronLeft, ShieldCheck, ShieldAlert, Loader2, AlertTriangle, Play, FolderOpen, ScrollText, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
+import { open as openDialog } from '@tauri-apps/plugin-dialog';
+import type { PrereqCheck, WizardPage, AdminAgentStatus, UserConfig, LogEntry } from '../types';
+
+const LOG_COLORS: Record<string, string> = {
+  info:    'text-gray-300',
+  warn:    'text-yellow-400',
+  error:   'text-red-400',
+  success: 'text-green-400',
+};
 
 interface Props {
   checks: PrereqCheck[];
@@ -14,6 +22,12 @@ interface Props {
   adminAgentLogs: string[];
   onRequestAdminAgent: () => Promise<void>;
   onShutdownAdminAgent: () => Promise<void>;
+  onPrereqAction?: (actionId: string) => Promise<void>;
+  config: UserConfig;
+  onUpdateConfig: (key: keyof UserConfig, value: string) => void;
+  onSaveConfig: (cfg: UserConfig) => Promise<void>;
+  prereqLogs: LogEntry[];
+  onClearPrereqLogs: () => void;
 }
 
 export const PrereqScreen: React.FC<Props> = ({
@@ -27,8 +41,16 @@ export const PrereqScreen: React.FC<Props> = ({
   adminAgentLogs,
   onRequestAdminAgent,
   onShutdownAdminAgent,
+  onPrereqAction,
+  config,
+  onUpdateConfig,
+  onSaveConfig,
+  prereqLogs,
+  onClearPrereqLogs,
 }) => {
   const [checking, setChecking] = React.useState(false);
+  const [runningAction, setRunningAction] = React.useState<string | null>(null);
+  const [logsExpanded, setLogsExpanded] = React.useState(true);
 
   useEffect(() => {
     runChecks();
@@ -44,8 +66,45 @@ export const PrereqScreen: React.FC<Props> = ({
     }
   };
 
+  const handleAction = async (actionId: string) => {
+    if (!onPrereqAction) return;
+    setRunningAction(actionId);
+    try {
+      await onPrereqAction(actionId);
+      // Re-run checks after action completes
+      await runChecks();
+    } catch (error) {
+      console.error('Prereq action failed:', error);
+    } finally {
+      setRunningAction(null);
+    }
+  };
+
+  const browseVpn = async () => {
+    const selected = await openDialog({
+      directory: false,
+      multiple: false,
+      filters: [
+        { name: 'OpenVPN Config', extensions: ['ovpn', 'conf'] },
+      ],
+    });
+    if (selected) {
+      onUpdateConfig('openvpn_config_path', selected);
+      // Save the config so it's persisted and available to scripts
+      const updatedConfig = { ...config, openvpn_config_path: selected };
+      await onSaveConfig(updatedConfig);
+    }
+  };
+
   const allPassed = checks.length > 0 && checks.every((c) => c.passed || c.warning);
   const hasFailures = checks.some((c) => !c.passed && !c.warning);
+
+  // Group VPN-related checks together
+  const openvpnCheck = checks.find(c => c.name === 'OpenVPN (VPN Client)');
+  const vpnConnCheck = checks.find(c => c.name === 'GitLab VPN Connectivity');
+  const otherChecks = checks.filter(c =>
+    c.name !== 'OpenVPN (VPN Client)' && c.name !== 'GitLab VPN Connectivity'
+  );
 
   return (
     <div className="flex flex-col h-full p-8">
@@ -59,61 +118,28 @@ export const PrereqScreen: React.FC<Props> = ({
         </p>
       </div>
 
-      {/* Check results */}
-      <div className="flex-1 space-y-3">
-        {checking && checks.length === 0 && (
-          <div className="flex items-center gap-3 text-gray-500">
-            <RefreshCw className="w-5 h-5 animate-spin" />
-            Running checks…
-          </div>
-        )}
-        {checks.map((check) => (
-          <div
-            key={check.name}
-            className={`flex items-start gap-3 p-4 rounded-lg border ${
-              check.passed
-                ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
-                : check.warning
-                ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700'
-                : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
-            }`}
-          >
-            {check.passed ? (
-              <CheckCircle className="w-5 h-5 text-green-500 mt-0.5 shrink-0" />
-            ) : check.warning ? (
-              <AlertTriangle className="w-5 h-5 text-amber-500 mt-0.5 shrink-0" />
-            ) : (
-              <XCircle className="w-5 h-5 text-red-500 mt-0.5 shrink-0" />
-            )}
-            <div>
-              <div className="font-medium text-gray-900 dark:text-white">{check.name}</div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">{check.message}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-
       {/* Admin Agent card — Windows only */}
       {isWindows && (
-        <div className={`p-4 rounded-lg border ${
+        <div className={`mb-4 p-4 rounded-lg border ${
           adminAgentStatus === 'ready'
             ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
             : adminAgentStatus === 'error'
             ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
-            : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+            : adminAgentStatus === 'requesting'
+            ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+            : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
         }`}>
           <div className="flex items-start gap-3">
             {adminAgentStatus === 'ready' && <ShieldCheck className="w-5 h-5 text-green-500 mt-0.5 shrink-0" />}
             {adminAgentStatus === 'error'  && <ShieldAlert className="w-5 h-5 text-red-500 mt-0.5 shrink-0" />}
             {adminAgentStatus === 'requesting' && <Loader2 className="w-5 h-5 text-blue-500 mt-0.5 shrink-0 animate-spin" />}
-            {adminAgentStatus === 'idle'   && <ShieldOff className="w-5 h-5 text-blue-400 mt-0.5 shrink-0" />}
+            {adminAgentStatus === 'idle'   && <XCircle className="w-5 h-5 text-red-500 mt-0.5 shrink-0" />}
             <div className="flex-1 min-w-0">
               <div className="font-medium text-gray-900 dark:text-white">Admin Privileges for WSL Steps</div>
               {adminAgentStatus === 'idle' && (
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                  6 steps (Enable WSL, WSL Network, Hosts File and their revert equivalents) require elevation.
-                  Click below to open a password prompt for <strong>powershell.exe</strong> — this is a trusted
-                  Microsoft-signed binary and goes through the standard password flow, not the IT-approval queue.
+                <p className="text-sm text-red-700 dark:text-red-300 mt-1">
+                  Not running as Administrator — 6 WSL-related steps require elevation.
+                  Click below to open the standard Windows UAC prompt for <strong>powershell.exe</strong>.
                 </p>
               )}
               {adminAgentStatus === 'requesting' && (
@@ -172,6 +198,227 @@ export const PrereqScreen: React.FC<Props> = ({
           </div>
         </div>
       )}
+
+      {/* Check results */}
+      <div className="flex-1 space-y-3">
+        {checking && checks.length === 0 && (
+          <div className="flex items-center gap-3 text-gray-500">
+            <RefreshCw className="w-5 h-5 animate-spin" />
+            Running checks…
+          </div>
+        )}
+
+        {/* Combined VPN Card - OpenVPN Installation + Connectivity */}
+        {(openvpnCheck || vpnConnCheck) && (
+          <div className={`p-4 rounded-lg border ${
+            openvpnCheck?.passed && vpnConnCheck?.passed
+              ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+              : !openvpnCheck?.passed && openvpnCheck?.actionable
+              ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+              : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700'
+          }`}>
+            <div className="flex items-start gap-3">
+              {openvpnCheck?.passed && vpnConnCheck?.passed ? (
+                <CheckCircle className="w-5 h-5 text-green-500 mt-0.5 shrink-0" />
+              ) : !openvpnCheck?.passed ? (
+                <XCircle className="w-5 h-5 text-red-500 mt-0.5 shrink-0" />
+              ) : (
+                <AlertTriangle className="w-5 h-5 text-amber-500 mt-0.5 shrink-0" />
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-gray-900 dark:text-white">VPN Access</div>
+                {openvpnCheck && !openvpnCheck.passed && (
+                  <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">
+                    ⚠ Admin rights required for OpenVPN installation
+                  </p>
+                )}
+                <div className="mt-2 space-y-2">
+                  {/* OpenVPN Installation Status */}
+                  {openvpnCheck && (
+                    <div className="flex items-start gap-2">
+                      {openvpnCheck.passed ? (
+                        <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
+                      ) : (
+                        <XCircle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
+                      )}
+                      <div className="flex-1 text-sm">
+                        <span className="font-medium text-gray-900 dark:text-white">OpenVPN Client: </span>
+                        <span className="text-gray-600 dark:text-gray-400">{openvpnCheck.message}</span>
+                      </div>
+                      {openvpnCheck.actionable && openvpnCheck.action_id && !openvpnCheck.passed && (
+                        <button
+                          onClick={() => handleAction(openvpnCheck.action_id!)}
+                          disabled={runningAction !== null}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition-colors shrink-0"
+                        >
+                          {runningAction === openvpnCheck.action_id ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Play className="w-4 h-4" />
+                          )}
+                          {isWindows ? 'Install OpenVPN' : 'Install Tunnelblick'}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {/* VPN Connectivity Status */}
+                  {vpnConnCheck && (
+                    <div className="flex items-start gap-2">
+                      {vpnConnCheck.passed ? (
+                        <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
+                      ) : (
+                        <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+                      )}
+                      <div className="flex-1 text-sm">
+                        <span className="font-medium text-gray-900 dark:text-white">GitLab Connectivity: </span>
+                        <span className="text-gray-600 dark:text-gray-400">{vpnConnCheck.message}</span>
+                      </div>
+                      {vpnConnCheck.actionable && vpnConnCheck.action_id && !vpnConnCheck.passed && (
+                        <button
+                          onClick={() => handleAction(vpnConnCheck.action_id!)}
+                          disabled={runningAction !== null || !config.openvpn_config_path}
+                          title={!config.openvpn_config_path ? 'Please select a .ovpn file first' : ''}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors shrink-0"
+                        >
+                          {runningAction === vpnConnCheck.action_id ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Play className="w-4 h-4" />
+                          )}
+                          Connect to VPN
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+            {/* OpenVPN config file picker — show if VPN connectivity failed */}
+            {vpnConnCheck && !vpnConnCheck.passed && (
+              <div className="ml-8 mt-3 p-3 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="w-5 h-5 text-yellow-600 dark:text-yellow-400 mt-0.5 shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-sm text-yellow-800 dark:text-yellow-200 mb-2">
+                      {config.openvpn_config_path
+                        ? `VPN connection failed. Current config: ${config.openvpn_config_path.split('\\').pop()}. Select a different file if needed.`
+                        : 'OpenVPN config file not set. Select your .ovpn file to enable VPN connection.'}
+                    </p>
+                    <button
+                      onClick={browseVpn}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-yellow-600 hover:bg-yellow-700 text-white font-medium rounded-lg transition-colors"
+                    >
+                      <FolderOpen className="w-4 h-4" />
+                      {config.openvpn_config_path ? 'Change .ovpn file' : 'Browse for .ovpn file'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Other checks */}
+        {otherChecks.map((check) => (
+          <div
+            key={check.name}
+            className={`flex items-start gap-3 p-4 rounded-lg border ${
+              check.passed
+                ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                : check.warning
+                ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700'
+                : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+            }`}
+          >
+            {check.passed ? (
+              <CheckCircle className="w-5 h-5 text-green-500 mt-0.5 shrink-0" />
+            ) : check.warning ? (
+              <AlertTriangle className="w-5 h-5 text-amber-500 mt-0.5 shrink-0" />
+            ) : (
+              <XCircle className="w-5 h-5 text-red-500 mt-0.5 shrink-0" />
+            )}
+            <div className="flex-1 min-w-0">
+              <div className="font-medium text-gray-900 dark:text-white">{check.name}</div>
+              <div className="text-sm text-gray-600 dark:text-gray-400">{check.message}</div>
+            </div>
+            {/* Action button for actionable checks */}
+            {check.actionable && check.action_id && !check.passed && (
+              <button
+                onClick={() => handleAction(check.action_id!)}
+                disabled={runningAction !== null}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition-colors shrink-0"
+              >
+                {runningAction === check.action_id ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Play className="w-4 h-4" />
+                )}
+                {check.action_id === 'install_openvpn'
+                  ? isWindows ? 'Install OpenVPN' : 'Install Tunnelblick'
+                  : 'Connect to VPN'}
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Comprehensive Precheck Logs — all prereq-related activity */}
+      <div className="mt-4 border rounded-lg bg-gray-50 dark:bg-gray-900/20 border-gray-300 dark:border-gray-700">
+        <button
+          onClick={() => setLogsExpanded(!logsExpanded)}
+          className="w-full flex items-center justify-between p-4 text-left hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors rounded-t-lg"
+        >
+          <div className="flex items-center gap-2">
+            <ScrollText className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+            <span className="font-medium text-gray-900 dark:text-white">Precheck Activity Logs</span>
+            <span className="text-xs text-gray-500 dark:text-gray-400">({prereqLogs.length} entries)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            {prereqLogs.length > 0 && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onClearPrereqLogs();
+                }}
+                className="p-1.5 text-gray-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                title="Clear logs"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
+            {logsExpanded ? (
+              <ChevronUp className="w-5 h-5 text-gray-500" />
+            ) : (
+              <ChevronDown className="w-5 h-5 text-gray-500" />
+            )}
+          </div>
+        </button>
+        <div
+          className={`overflow-hidden transition-all duration-300 ease-in-out ${
+            logsExpanded ? 'max-h-80' : 'max-h-0'
+          }`}
+        >
+          {prereqLogs.length > 0 ? (
+            <div className="border-t border-gray-700 bg-gray-950 max-h-80 overflow-y-auto font-mono text-xs px-4 py-3 space-y-0.5">
+              {prereqLogs.map((entry, i) => {
+                const colorClass = LOG_COLORS[entry.level] ?? 'text-gray-300';
+                const ts = entry.ts ? new Date(entry.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
+                return (
+                  <div key={i} className={`leading-5 whitespace-pre-wrap break-all ${colorClass}`}>
+                    <span className="text-gray-600 select-none">{ts && `${ts} `}</span>
+                    <span className="text-blue-400 select-none">[Pre-flight Checks] </span>
+                    {entry.line}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="border-t border-gray-700 bg-gray-950 p-4 text-center">
+              <p className="text-sm text-gray-500 italic">No precheck activity yet. Run checks or action buttons to see logs here.</p>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Warning for failures */}
       {hasFailures && (

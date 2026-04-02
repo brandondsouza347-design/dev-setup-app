@@ -75,6 +75,8 @@ export interface PrereqCheck {
   passed: boolean;
   warning?: boolean;
   message: string;
+  actionable?: boolean;
+  action_id?: string;
 }
 
 export type LogLevel = 'info' | 'warn' | 'error' | 'success';

@@ -40,12 +40,14 @@ interface UseSetupReturn {
   adminAgentStatus: AdminAgentStatus;
   adminAgentError: string | null;
   adminAgentLogs: string[];
+  prereqLogs: LogEntry[];
 
   // Actions
   setPage: (p: WizardPage) => void;
   runPrereqCheck: () => Promise<void>;
+  handlePrereqAction: (actionId: string) => Promise<void>;
   saveConfig: (cfg: UserConfig) => Promise<void>;
-  updateConfig: (cfg: UserConfig) => void;
+  updateConfig: (key: keyof UserConfig, value: string) => void;
   startSetup: () => Promise<void>;
   stopSetup: () => Promise<void>;
   resumeSetup: () => Promise<void>;
@@ -61,6 +63,9 @@ interface UseSetupReturn {
   // Admin agent actions
   requestAdminAgent: () => Promise<void>;
   shutdownAdminAgent: () => Promise<void>;
+  // Log management
+  clearLogs: () => void;
+  clearPrereqLogs: () => void;
 }
 
 export function useSetup(): UseSetupReturn {
@@ -97,6 +102,7 @@ export function useSetup(): UseSetupReturn {
   const [adminAgentStatus, setAdminAgentStatus] = useState<AdminAgentStatus>('idle');
   const [adminAgentError, setAdminAgentError] = useState<string | null>(null);
   const [adminAgentLogs, setAdminAgentLogs] = useState<string[]>([]);
+  const [prereqLogs, setPrereqLogs] = useState<LogEntry[]>([]);
   const [revertSteps, setRevertSteps] = useState<SetupStep[]>([]);
   const [revertResults, setRevertResults] = useState<Record<string, StepResult>>({});
   const [isReverting, setIsReverting] = useState(false);
@@ -156,6 +162,13 @@ export function useSetup(): UseSetupReturn {
       const unlistenLog = await listen<LogEvent>('step_log', (event) => {
         if (!mounted) return;
         const { step_id, line, level } = event.payload;
+
+        // Capture all prereq-related logs for comprehensive logging
+        const prereqStepIds = ['__prereq__', '__prereq_action__', 'install_openvpn', 'connect_vpn', 'install_openvpn_mac', 'connect_vpn_mac'];
+        if (prereqStepIds.includes(step_id)) {
+          setPrereqLogs((prev) => [...prev, { stepId: step_id, line, level, ts: Date.now() }]);
+        }
+
         setLogs((prev) => {
           const existing = prev[step_id] ?? [];
           return {
@@ -266,6 +279,22 @@ export function useSetup(): UseSetupReturn {
       ...prev,
       __prereq__: [...(prev['__prereq__'] ?? []), ...entries],
     }));
+    // Also add to prereqLogs for the Precheck Activity Logs section
+    setPrereqLogs((prev) => [...prev, ...entries]);
+  }, []);
+
+  const handlePrereqAction = useCallback(async (actionId: string) => {
+    const command = actionId === 'install_openvpn' ? 'install_openvpn_prereq' : 'connect_vpn_prereq';
+    try {
+      await invoke(command);
+    } catch (e) {
+      const msg = typeof e === 'string' ? e : (e as any)?.message ?? String(e);
+      setLogs((prev) => ({
+        ...prev,
+        __prereq__: [...(prev['__prereq__'] ?? []), { stepId: '__prereq__', line: `✗ Action failed: ${msg}`, level: 'error', ts: Date.now() }],
+      }));
+      throw e; // Re-throw so PrereqScreen can handle it
+    }
   }, []);
 
   const saveConfig = useCallback(async (cfg: UserConfig) => {
@@ -273,8 +302,8 @@ export function useSetup(): UseSetupReturn {
     setConfig(cfg);
   }, []);
 
-  const updateConfig = useCallback((cfg: UserConfig) => {
-    setConfig(cfg);
+  const updateConfig = useCallback((key: keyof UserConfig, value: string) => {
+    setConfig((prev) => ({ ...prev, [key]: value }));
   }, []);
 
   const startSetup = useCallback(async () => {
@@ -407,6 +436,15 @@ export function useSetup(): UseSetupReturn {
     setIsRunning(false);
   }, []);
 
+  // ── Clear logs ─────────────────────────────────────────────────────────
+  const clearLogs = useCallback(() => {
+    setLogs({});
+  }, []);
+
+  const clearPrereqLogs = useCallback(() => {
+    setPrereqLogs([]);
+  }, []);
+
   return {
     osInfo,
     steps,
@@ -426,6 +464,7 @@ export function useSetup(): UseSetupReturn {
     revertComplete,
     setPage,
     runPrereqCheck,
+    handlePrereqAction,
     saveConfig,
     updateConfig,
     startSetup,
@@ -442,7 +481,10 @@ export function useSetup(): UseSetupReturn {
     adminAgentStatus,
     adminAgentError,
     adminAgentLogs,
+    prereqLogs,
     requestAdminAgent,
     shutdownAdminAgent,
+    clearLogs,
+    clearPrereqLogs,
   };
 }

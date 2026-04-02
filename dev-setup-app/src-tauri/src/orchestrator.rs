@@ -388,26 +388,6 @@ fn all_steps() -> Vec<SetupStep> {
         },
         // ── GitLab onboarding track (Windows) ──────────────────────────────────────────────────
         SetupStep {
-            id: "install_openvpn".to_string(),
-            title: "Install OpenVPN".to_string(),
-            description: "Install OpenVPN via winget and copy the .ovpn config to the OpenVPN config directory.".to_string(),
-            platform: Platform::Windows,
-            category: StepCategory::Network,
-            required: true,
-            estimated_minutes: 3,
-            rollback_steps: vec![],
-        },
-        SetupStep {
-            id: "connect_vpn".to_string(),
-            title: "Connect to VPN".to_string(),
-            description: "Launch OpenVPN and wait until gitlab.toogoerp.net is reachable. Exits immediately if already connected.".to_string(),
-            platform: Platform::Windows,
-            category: StepCategory::Network,
-            required: true,
-            estimated_minutes: 3,
-            rollback_steps: vec![],
-        },
-        SetupStep {
             id: "gitlab_ssh".to_string(),
             title: "Add SSH Key to GitLab".to_string(),
             description: "Generate an SSH key in WSL (if needed) and upload it to GitLab via API. Falls back to manual instructions if no PAT is set.".to_string(),
@@ -468,26 +448,6 @@ fn all_steps() -> Vec<SetupStep> {
             rollback_steps: vec![],
         },
         // ── GitLab onboarding track (macOS) ─────────────────────────────────────────────────
-        SetupStep {
-            id: "install_openvpn_mac".to_string(),
-            title: "Install Tunnelblick (OpenVPN)".to_string(),
-            description: "Install Tunnelblick via Homebrew and copy the .ovpn config to the Tunnelblick Configurations directory.".to_string(),
-            platform: Platform::MacOs,
-            category: StepCategory::Network,
-            required: true,
-            estimated_minutes: 3,
-            rollback_steps: vec![],
-        },
-        SetupStep {
-            id: "connect_vpn_mac".to_string(),
-            title: "Connect to VPN".to_string(),
-            description: "Open Tunnelblick and wait until gitlab.toogoerp.net is reachable. Exits immediately if already connected.".to_string(),
-            platform: Platform::MacOs,
-            category: StepCategory::Network,
-            required: true,
-            estimated_minutes: 3,
-            rollback_steps: vec![],
-        },
         SetupStep {
             id: "gitlab_ssh_mac".to_string(),
             title: "Add SSH Key to GitLab".to_string(),
@@ -922,12 +882,28 @@ fn emit_log(window: &WebviewWindow, step_id: &str, line: &str, level: LogLevel) 
 }
 
 fn classify_log_line(line: &str) -> LogLevel {
+    let trimmed = line.trim();
+    // Check for emoji/symbol prefixes first (more specific)
+    if trimmed.starts_with("✓") || trimmed.starts_with("✅") {
+        return LogLevel::Success;
+    }
+    if trimmed.starts_with("✗") || trimmed.starts_with("❌") {
+        return LogLevel::Error;
+    }
+    if trimmed.starts_with("⚠") || trimmed.starts_with("⏳") || trimmed.starts_with("?") {
+        return LogLevel::Warn;
+    }
+    if trimmed.starts_with("▶") || trimmed.starts_with("→") {
+        return LogLevel::Info;
+    }
+
+    // Then check for keywords in content
     let lower = line.to_lowercase();
     if lower.contains("error") || lower.contains("failed") || lower.contains("fatal") {
         LogLevel::Error
     } else if lower.contains("warn") || lower.contains("warning") {
         LogLevel::Warn
-    } else if lower.contains("✓") || lower.contains("success") || lower.contains("complete") || lower.contains("done") {
+    } else if lower.contains("success") || lower.contains("complete") || lower.contains("done") {
         LogLevel::Success
     } else {
         LogLevel::Info

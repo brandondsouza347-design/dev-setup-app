@@ -8,7 +8,7 @@ import type { UserConfig, WizardPage, OsInfo } from '../types';
 interface Props {
   config: UserConfig;
   osInfo: OsInfo | null;
-  onUpdate: (cfg: UserConfig) => void;
+  onUpdate: (key: keyof UserConfig, value: string) => void;
   onSave: (cfg: UserConfig) => Promise<void>;
   onNext: (page: WizardPage) => void;
   onBack: () => void;
@@ -21,7 +21,7 @@ export const SettingsScreen: React.FC<Props> = ({ config, osInfo, onUpdate, onSa
   const isWindows = osInfo?.os === 'windows';
 
   const update = <K extends keyof UserConfig>(key: K, value: UserConfig[K]) => {
-    onUpdate({ ...config, [key]: value });
+    onUpdate(key, value as string);
     setSaved(false);
   };
 
@@ -53,14 +53,6 @@ export const SettingsScreen: React.FC<Props> = ({ config, osInfo, onUpdate, onSa
     if (typeof selected === 'string') {
       update('wsl_install_dir', selected);
     }
-  };
-
-  const browseVpn = async () => {
-    const selected = await openDialog({
-      title: 'Select OpenVPN config file',
-      filters: [{ name: 'VPN Config', extensions: ['ovpn', 'conf'] }],
-    });
-    if (typeof selected === 'string') update('openvpn_config_path', selected);
   };
 
   const openGitLabPAT = () =>
@@ -202,35 +194,6 @@ export const SettingsScreen: React.FC<Props> = ({ config, osInfo, onUpdate, onSa
                 className="input"
                 placeholder="jane@example.com"
               />
-            </Field>
-          </Section>
-        )}
-
-        {/* VPN (Windows only) */}
-        {isWindows && (
-          <Section title="VPN Configuration">
-            {!config.openvpn_config_path && (
-              <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 text-amber-800 dark:text-amber-300 text-sm">
-                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-                <span>
-                  <strong>OpenVPN config not set.</strong> IT provides a <code>.ovpn</code> file —
-                  you'll need to install OpenVPN and load it manually. Setup will continue without it.
-                </span>
-              </div>
-            )}
-            <Field label="OpenVPN Config File" hint="Path to your .ovpn file (provided by IT)">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={config.openvpn_config_path ?? ''}
-                  onChange={(e) => update('openvpn_config_path', e.target.value || null)}
-                  className="input flex-1"
-                  placeholder="C:\Users\you\vpn\corporate.ovpn"
-                />
-                <button onClick={browseVpn} className="btn-secondary flex items-center gap-1 px-3">
-                  <FolderOpen className="w-4 h-4" />
-                </button>
-              </div>
             </Field>
           </Section>
         )}
