@@ -30,6 +30,23 @@ echo "    Brew      : $BREW_PREFIX"
 echo "    Binaries  : $PG_BIN"
 echo "    Data dir  : $PG_DATA"
 
+# ─── Check if already running ───────────────────────────────────────────────
+
+if command -v "$PG_BIN/pg_isready" &>/dev/null && "$PG_BIN/pg_isready" -q 2>/dev/null; then
+    echo "✓ PostgreSQL is already running and accepting connections"
+    echo "   $("$PG_BIN/pg_isready")"
+    echo ""
+    echo "✓ PostgreSQL setup complete (already running)"
+    exit 0
+fi
+
+# Also check if port 5432 is in use
+if lsof -Pi :5432 -sTCP:LISTEN -t >/dev/null 2>&1; then
+    echo "✓ PostgreSQL appears to be running (port 5432 in use)"
+    echo "   Skipping setup to avoid disruption"
+    exit 0
+fi
+
 # ─── 1. Install PostgreSQL ──────────────────────────────────────────────────
 
 echo ""
@@ -67,17 +84,43 @@ fi
 echo ""
 echo "==> Step 3: Starting PostgreSQL service..."
 
-# Try brew services first; fall back to pg_ctl if LaunchAgent issues
-if brew services start "postgresql@${PG_VERSION}" 2>&1 | grep -qi "error\|bootstrap failed"; then
-    echo "⚠ brew services failed, trying pg_ctl directly..."
-    # Remove stale plist if present
-    rm -f "$HOME/Library/LaunchAgents/homebrew.mxcl.postgresql@${PG_VERSION}.plist" 2>/dev/null || true
-    LC_ALL="en_US.UTF-8" "$PG_BIN/pg_ctl" -D "$PG_DATA" -l "$PG_DATA/server.log" start || true
+# Check if already running before attempting start
+if "$PG_BIN/pg_isready" -q 2>/dev/null; then
+    echo "✓ PostgreSQL already running and ready"
 else
-    echo "✓ PostgreSQL service started via brew services"
+    # Clean up stale PIDs that might block startup
+    if [ -f "$PG_DATA/postmaster.pid" ]; then
+        PID=$(head -n 1 "$PG_DATA/postmaster.pid" 2>/dev/null || echo "")
+        if [ -n "$PID" ] && ! kill -0 "$PID" 2>/dev/null; then
+            echo "   Removing stale PID file..."
+            rm -f "$PG_DATA/postmaster.pid"
+        fi
+    fi
+
+    # Try brew services first; fall back to pg_ctl if LaunchAgent issues
+    if brew services start "postgresql@${PG_VERSION}" 2>&1 | grep -qi "error\|bootstrap failed"; then
+        echo "⚠ brew services failed, trying pg_ctl directly..."
+        rm -f "$HOME/Library/LaunchAgents/homebrew.mxcl.postgresql@${PG_VERSION}.plist" 2>/dev/null || true
+        LC_ALL="en_US.UTF-8" "$PG_BIN/pg_ctl" -D "$PG_DATA" -l "$PG_DATA/server.log" start || true
+    else
+        echo "✓ PostgreSQL service started via brew services"
+    fi
+
+    # Wait for server to be ready with retry logic
+    echo "   Waiting for PostgreSQL to accept connections..."
+    for i in {1..15}; do
+        if "$PG_BIN/pg_isready" -q 2>/dev/null; then
+            echo "✓ PostgreSQL is ready (after ${i}s)"
+            break
+        fi
+        if [ "$i" -eq 15 ]; then
+            echo "⚠ PostgreSQL may need more time to start"
+        fi
+        sleep 1
+    done
 fi
 
-# Wait a moment for server to be ready
+# Confirm readiness
 sleep 3
 
 # ─── 4. Create roles and databases ──────────────────────────────────────────
