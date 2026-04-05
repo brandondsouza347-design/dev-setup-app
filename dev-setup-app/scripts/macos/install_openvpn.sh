@@ -19,13 +19,15 @@ if [ -n "$OVPN_SRC" ] && [ -f "$OVPN_SRC" ]; then
     LEAF=$(basename "$OVPN_SRC")
     DEST="$CONFIGS_DIR/$LEAF"
     if [ -f "$DEST" ]; then
-        echo "✓ VPN config already in place: $DEST"
-    else
-        cp "$OVPN_SRC" "$DEST"
-        echo "✓ VPN config copied: $OVPN_SRC → $DEST"
+        echo "  VPN config already exists: $DEST"
+        echo "  Updating with current selection..."
     fi
+    # Always copy to ensure latest file is used (overwrite if exists)
+    cp "$OVPN_SRC" "$DEST"
+    echo "✓ VPN config copied: $OVPN_SRC → $DEST"
 else
     echo "⚠ SETUP_OPENVPN_CONFIG_PATH not set or file not found."
+    echo "  Source path: '$OVPN_SRC'"
     echo "  Copy your .ovpn file manually to:"
     echo "  $HOME/Library/Application Support/Tunnelblick/Configurations/"
 fi
