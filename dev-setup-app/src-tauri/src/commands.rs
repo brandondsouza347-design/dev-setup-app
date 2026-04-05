@@ -1,4 +1,5 @@
 // commands.rs — Tauri command handlers exposed to the React frontend
+use crate::admin_agent::{execute_via_agent, AdminAgentState};
 use crate::orchestrator::{execute_script_with_retry, find_step_by_id, get_revert_steps_for_os, get_steps_for_os, SetupStep};
 use crate::state::{AppState, CancelState, StepStatus, UserConfig};
 use serde::{Deserialize, Serialize};
@@ -828,11 +829,54 @@ pub async fn install_openvpn_prereq(
     state: State<'_, Mutex<AppState>>,
 ) -> Result<(), String> {
     let os = detect_os();
+
+    // On Windows, check if admin agent is ready and use it (avoids second UAC prompt)
+    #[cfg(target_os = "windows")]
+    if os.os == "windows" {
+        if let Some(agent_state) = app_handle.try_state::<AdminAgentState>() {
+            if agent_state.is_ready() {
+                log::info!("install_openvpn_prereq: Using admin agent (already elevated)");
+                emit_frontend_log(&window, "__prereq_action__", "▶ Install OpenVPN", "info");
+                emit_frontend_log(&window, "__prereq_action__", "Using existing admin privileges (no UAC prompt)", "info");
+
+                let step = SetupStep {
+                    id: "install_openvpn".to_string(),
+                    title: "Install OpenVPN".to_string(),
+                    description: "Installing OpenVPN via winget".to_string(),
+                    platform: crate::orchestrator::Platform::Windows,
+                    category: crate::orchestrator::StepCategory::Network,
+                    required: true,
+                    estimated_minutes: 3,
+                    rollback_steps: vec![],
+                };
+
+                let config = {
+                    let s = state.lock().unwrap();
+                    s.config.clone()
+                };
+
+                let result = execute_via_agent(&window, &app_handle, &step, &config, agent_state.inner()).await;
+
+                return match result {
+                    Ok(_) => {
+                        emit_frontend_log(&window, "__prereq_action__", "✓ OpenVPN installed successfully", "success");
+                        Ok(())
+                    }
+                    Err(e) => {
+                        emit_frontend_log(&window, "__prereq_action__", &format!("✗ Installation failed: {}", e), "error");
+                        Err(e)
+                    }
+                };
+            }
+        }
+    }
+
+    // Fall back to regular execution (will trigger UAC on Windows if not elevated)
     let (step_id, title, description) = if os.os == "windows" {
         (
             "install_openvpn",
             "Install OpenVPN",
-            "Installing OpenVPN via winget and configuring VPN access",
+            "Installing OpenVPN via winget (UAC prompt will appear)",
         )
     } else {
         (

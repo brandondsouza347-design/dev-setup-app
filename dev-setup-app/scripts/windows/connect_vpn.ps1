@@ -38,20 +38,22 @@ if (-not $exePath) {
 }
 Write-Output "  Found OpenVPN at: $exePath"
 
-# Find .ovpn file: prefer the one set in settings, then search the config dir
+# Find .ovpn file: prefer the one in OpenVPN\config, then fall back to settings path
 $ovpnFile = $null
 $cfgDir = "$env:USERPROFILE\OpenVPN\config"
 Write-Output "  Looking for .ovpn config file..."
-if ($env:SETUP_OPENVPN_CONFIG_PATH -and (Test-Path $env:SETUP_OPENVPN_CONFIG_PATH)) {
+
+# First, try to find it in the standard OpenVPN config directory
+$ovpnFile = Get-ChildItem -Path $cfgDir -Filter "*.ovpn" -ErrorAction SilentlyContinue |
+            Select-Object -First 1 -ExpandProperty FullName
+if ($ovpnFile) {
+    Write-Output "  Found config in OpenVPN directory: $ovpnFile"
+} elseif ($env:SETUP_OPENVPN_CONFIG_PATH -and (Test-Path $env:SETUP_OPENVPN_CONFIG_PATH)) {
+    # Fall back to settings path if nothing in config dir
     $ovpnFile = $env:SETUP_OPENVPN_CONFIG_PATH
     Write-Output "  Using config from settings: $ovpnFile"
-} else {
-    $ovpnFile = Get-ChildItem -Path $cfgDir -Filter "*.ovpn" -ErrorAction SilentlyContinue |
-                Select-Object -First 1 -ExpandProperty FullName
-    if ($ovpnFile) {
-        Write-Output "  Found config in default directory: $ovpnFile"
-    }
 }
+
 if (-not $ovpnFile) {
     Write-Output "  Searched: $cfgDir"
     Write-Output "  Searched: SETUP_OPENVPN_CONFIG_PATH = '$env:SETUP_OPENVPN_CONFIG_PATH'"
@@ -60,16 +62,26 @@ if (-not $ovpnFile) {
 
 Write-Output "  Launching OpenVPN with profile: $(Split-Path -Leaf $ovpnFile)"
 
-# Check if OpenVPN GUI is already running
-$profileName = [System.IO.Path]::GetFileNameWithoutExtension($ovpnFile)
+# Kill any existing OpenVPN GUI to ensure clean connection
 $existingProcess = Get-Process -Name "openvpn-gui" -ErrorAction SilentlyContinue
-
 if ($existingProcess) {
-    Write-Output "  OpenVPN GUI already running — using IPC command"
-    Start-Process -FilePath $exePath -ArgumentList "--command", "connect", $profileName -WindowStyle Hidden -ErrorAction SilentlyContinue
+    Write-Output "  Stopping existing OpenVPN GUI instance..."
+    Stop-Process -Name "openvpn-gui" -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+}
+
+# Determine if config is in standard directory or custom location
+$profileName = [System.IO.Path]::GetFileNameWithoutExtension($ovpnFile)
+$isInConfigDir = $ovpnFile.StartsWith($cfgDir, [System.StringComparison]::OrdinalIgnoreCase)
+
+if ($isInConfigDir) {
+    # Use profile name only (OpenVPN GUI looks in config directory)
+    Write-Output "  Starting OpenVPN GUI with profile name: $profileName"
+    Start-Process -FilePath $exePath -ArgumentList "--connect", $profileName -ErrorAction SilentlyContinue
 } else {
-    Write-Output "  Starting new OpenVPN GUI instance"
-    Start-Process -FilePath $exePath -ArgumentList "--connect", "`"$ovpnFile`"" -WindowStyle Hidden -ErrorAction SilentlyContinue
+    # Use full path for configs outside standard directory
+    Write-Output "  Starting OpenVPN GUI with config path: $ovpnFile"
+    Start-Process -FilePath $exePath -ArgumentList "--connect", "`"$ovpnFile`"" -ErrorAction SilentlyContinue
 }
 
 Write-Output "  OpenVPN process started — waiting for tunnel to establish..."

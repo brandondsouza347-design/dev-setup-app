@@ -1,6 +1,6 @@
 // components/PrereqScreen.tsx — Pre-flight checks before setup
 import React, { useEffect } from 'react';
-import { CheckCircle, XCircle, RefreshCw, ChevronRight, ChevronLeft, ShieldCheck, ShieldAlert, Loader2, AlertTriangle, Play, FolderOpen, ScrollText, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
+import { CheckCircle, XCircle, RefreshCw, ChevronRight, ChevronLeft, ShieldCheck, ShieldAlert, Loader2, AlertTriangle, Play, FolderOpen, ScrollText, ChevronDown, ChevronUp, Trash2, StopCircle } from 'lucide-react';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import type { PrereqCheck, WizardPage, AdminAgentStatus, UserConfig, LogEntry } from '../types';
 
@@ -89,6 +89,10 @@ export const PrereqScreen: React.FC<Props> = ({
       ],
     });
     if (selected) {
+      // Reset running action if user changes file while VPN is connecting
+      if (runningAction === 'connect_vpn') {
+        setRunningAction(null);
+      }
       onUpdateConfig('openvpn_config_path', selected);
       // Save the config so it's persisted and available to scripts
       const updatedConfig = { ...config, openvpn_config_path: selected };
@@ -274,19 +278,30 @@ export const PrereqScreen: React.FC<Props> = ({
                         <span className="text-gray-600 dark:text-gray-400">{vpnConnCheck.message}</span>
                       </div>
                       {vpnConnCheck.actionable && vpnConnCheck.action_id && !vpnConnCheck.passed && (
-                        <button
-                          onClick={() => handleAction(vpnConnCheck.action_id!)}
-                          disabled={runningAction !== null || !config.openvpn_config_path}
-                          title={!config.openvpn_config_path ? 'Please select a .ovpn file first' : ''}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors shrink-0"
-                        >
-                          {runningAction === vpnConnCheck.action_id ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Play className="w-4 h-4" />
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            onClick={() => handleAction(vpnConnCheck.action_id!)}
+                            disabled={runningAction !== null || !config.openvpn_config_path}
+                            title={!config.openvpn_config_path ? 'Please select a .ovpn file first' : ''}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
+                          >
+                            {runningAction === vpnConnCheck.action_id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Play className="w-4 h-4" />
+                            )}
+                            Connect to VPN
+                          </button>
+                          {runningAction === vpnConnCheck.action_id && (
+                            <button
+                              onClick={() => setRunningAction(null)}
+                              className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                              title="Stop VPN connection attempt"
+                            >
+                              <StopCircle className="w-5 h-5" />
+                            </button>
                           )}
-                          Connect to VPN
-                        </button>
+                        </div>
                       )}
                     </div>
                   )}

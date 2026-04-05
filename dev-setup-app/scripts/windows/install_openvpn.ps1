@@ -38,13 +38,15 @@ if ($ovpnSrc -and (Test-Path $ovpnSrc)) {
     $leaf = Split-Path -Leaf $ovpnSrc
     $dest = Join-Path $configDir $leaf
     if (Test-Path $dest) {
-        Write-Output "✓ VPN config already in place: $dest"
-    } else {
-        Copy-Item -Path $ovpnSrc -Destination $dest -Force
-        Write-Output "✓ VPN config copied: $ovpnSrc → $dest"
+        Write-Output "  VPN config already exists: $dest"
+        Write-Output "  Updating with current selection..."
     }
+    # Always copy to ensure latest file is used (overwrite if exists)
+    Copy-Item -Path $ovpnSrc -Destination $dest -Force
+    Write-Output "✓ VPN config copied: $ovpnSrc → $dest"
 } else {
     Write-Output "⚠ SETUP_OPENVPN_CONFIG_PATH is not set or file not found."
+    Write-Output "  Source path: '$ovpnSrc'"
     Write-Output "  Copy your .ovpn file manually to: $configDir"
 }
 
