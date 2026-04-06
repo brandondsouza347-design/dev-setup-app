@@ -1,13 +1,25 @@
 # install_openvpn.ps1 — Install OpenVPN via winget and stage the .ovpn config
 $ErrorActionPreference = 'Stop'
 
+# Read SKIP_INSTALLED setting (default: true)
+$SkipInstalled = $env:SETUP_SKIP_INSTALLED -ne 'false'
+
 # Step 1: Install OpenVPN (idempotent)
 Write-Output "→ Step 1/2: Checking OpenVPN installation..."
 Write-Output "  Querying winget for OpenVPNTechnologies.OpenVPN..."
 $installed = winget list --id OpenVPNTechnologies.OpenVPN --accept-source-agreements 2>&1
 Write-Output "  winget result: $installed"
-if ($installed -match "OpenVPN") {
+if ($SkipInstalled -and ($installed -match "OpenVPN")) {
     Write-Output "✓ OpenVPN is already installed — skipping installation."
+} elseif ($installed -match "OpenVPN") {
+    Write-Output "→ OpenVPN already installed but SKIP_INSTALLED=false — reinstalling..."
+    winget uninstall --id OpenVPNTechnologies.OpenVPN --silent 2>&1 | Out-Null
+    Start-Sleep -Seconds 3
+    winget install --id OpenVPNTechnologies.OpenVPN --accept-source-agreements --accept-package-agreements --silent
+    if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne -1978335189) {
+        throw "winget reinstall OpenVPN failed (exit code: $LASTEXITCODE)"
+    }
+    Write-Output "✓ OpenVPN reinstalled successfully."
 } else {
     Write-Output "  OpenVPN not found — starting installation via winget..."
     Write-Output "  Package: OpenVPNTechnologies.OpenVPN (this may take a few minutes)..."

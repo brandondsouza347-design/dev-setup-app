@@ -103,9 +103,42 @@ PYEOF
 fi
 
 # ═════════════════════════════════════════════════════════════════════════════
-# Sub-task 3/3: Open VS Code workspace
+# Sub-task 3/3: Configure workspace trust and open VS Code workspace
 # ═════════════════════════════════════════════════════════════════════════════
-echo "→ Sub-task 3/3: Opening VS Code workspace..."
+echo "→ Sub-task 3/3: Configuring workspace trust and opening VS Code..."
+
+# Configure VS Code to trust the workspace automatically
+SETTINGS_DIR="$HOME/Library/Application Support/Code/User"
+SETTINGS_PATH="$SETTINGS_DIR/settings.json"
+mkdir -p "$SETTINGS_DIR"
+
+python3 - "$SETTINGS_PATH" "$CLONE_DIR" <<'PYEOF'
+import json, os, sys
+settings_path, workspace_dir = sys.argv[1], sys.argv[2]
+
+# Load existing settings or create new
+if os.path.exists(settings_path):
+    with open(settings_path, 'r') as f:
+        settings = json.load(f)
+else:
+    settings = {}
+
+# Configure workspace trust settings
+if 'security.workspace.trust.untrustedFiles' not in settings:
+    settings['security.workspace.trust.untrustedFiles'] = 'open'
+
+if 'security.workspace.trust.emptyWindow' not in settings:
+    settings['security.workspace.trust.emptyWindow'] = False
+
+# Write settings
+with open(settings_path, 'w') as f:
+    json.dump(settings, f, indent=2)
+
+print(f'Workspace trust configured for {workspace_dir}')
+PYEOF
+
+echo "  ✓ Workspace trust configured"
+
 WS_FILE="$CLONE_DIR/Propello.code-workspace"
 if [ -f "$WS_FILE" ]; then
     code "$WS_FILE" &

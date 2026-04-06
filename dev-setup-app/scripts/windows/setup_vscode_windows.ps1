@@ -177,7 +177,6 @@ $Settings = @"
     "window.zoomLevel": 0.5,
     "workbench.iconTheme": "material-icon-theme",
     "workbench.list.smoothScrolling": true,
-    "python.defaultInterpreterPath": "$WSLPythonPath",
     "[python]": {
         "editor.defaultFormatter": "ms-python.black-formatter",
         "diffEditor.ignoreTrimWhitespace": true

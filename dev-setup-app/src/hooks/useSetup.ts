@@ -47,7 +47,7 @@ interface UseSetupReturn {
   runPrereqCheck: () => Promise<void>;
   handlePrereqAction: (actionId: string) => Promise<void>;
   saveConfig: (cfg: UserConfig) => Promise<void>;
-  updateConfig: (key: keyof UserConfig, value: string) => void;
+  updateConfig: (key: keyof UserConfig, value: string | boolean) => void;
   startSetup: () => Promise<void>;
   stopSetup: () => Promise<void>;
   resumeSetup: () => Promise<void>;
@@ -82,7 +82,8 @@ export function useSetup(): UseSetupReturn {
     python_version: '3.9.21',
     node_version: '22.10.0',
     venv_name: 'erc',
-    skip_already_installed: true,
+    skip_already_installed: false,
+    skip_wsl_backup: false,
     openvpn_config_path: null,
     git_name: null,
     git_email: null,
@@ -302,7 +303,7 @@ export function useSetup(): UseSetupReturn {
     setConfig(cfg);
   }, []);
 
-  const updateConfig = useCallback((key: keyof UserConfig, value: string) => {
+  const updateConfig = useCallback((key: keyof UserConfig, value: string | boolean) => {
     setConfig((prev) => ({ ...prev, [key]: value }));
   }, []);
 

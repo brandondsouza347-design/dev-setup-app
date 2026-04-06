@@ -5,6 +5,7 @@ set -euo pipefail
 
 NODE_VERSION="${SETUP_NODE_VERSION:-22.10.0}"
 NVM_VERSION="0.40.1"
+SKIP_INSTALLED="${SETUP_SKIP_INSTALLED:-true}"
 SHELL_RC="$HOME/.bashrc"
 
 echo "==> setup_nvm_wsl: NVM=$NVM_VERSION  Node=$NODE_VERSION"
@@ -27,11 +28,11 @@ add_to_bashrc() {
 echo "==> Step 1: Installing NVM v$NVM_VERSION..."
 export NVM_DIR="$HOME/.nvm"
 
-if [ -s "$NVM_DIR/nvm.sh" ]; then
+if [ "$SKIP_INSTALLED" = "true" ] && [ -s "$NVM_DIR/nvm.sh" ]; then
     source "$NVM_DIR/nvm.sh"
     INSTALLED_NVM="$(nvm --version 2>/dev/null || echo '0')"
     if [ "$INSTALLED_NVM" = "$NVM_VERSION" ]; then
-        echo "✓ NVM v$NVM_VERSION already installed"
+        echo "✓ NVM v$NVM_VERSION already installed — skipping"
     else
         echo "  Upgrading NVM from v$INSTALLED_NVM to v$NVM_VERSION..."
         # GIT_SSL_NO_VERIFY bypasses corporate CA for git operations inside install.sh
@@ -40,6 +41,13 @@ if [ -s "$NVM_DIR/nvm.sh" ]; then
         source "$NVM_DIR/nvm.sh"
         echo "✓ NVM upgraded to v$NVM_VERSION"
     fi
+elif [ -s "$NVM_DIR/nvm.sh" ]; then
+    echo "→ NVM already installed but SKIP_INSTALLED=false — reinstalling..."
+    source "$NVM_DIR/nvm.sh"
+    export GIT_SSL_NO_VERIFY=1
+    curl -fsSL --insecure "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh" | bash
+    source "$NVM_DIR/nvm.sh"
+    echo "✓ NVM reinstalled to v$NVM_VERSION"
 else
     echo "  Downloading and installing NVM v$NVM_VERSION..."
     export GIT_SSL_NO_VERIFY=1
@@ -58,8 +66,12 @@ echo "✓ NVM shell integration configured"
 
 # ─── 3. Install Node.js ─────────────────────────────────────────────────────
 echo "==> Step 3: Installing Node.js v$NODE_VERSION..."
-if nvm ls "$NODE_VERSION" 2>/dev/null | grep -q "$NODE_VERSION"; then
-    echo "✓ Node v$NODE_VERSION already installed"
+if [ "$SKIP_INSTALLED" = "true" ] && nvm ls "$NODE_VERSION" 2>/dev/null | grep -q "$NODE_VERSION"; then
+    echo "✓ Node v$NODE_VERSION already installed — skipping"
+elif nvm ls "$NODE_VERSION" 2>/dev/null | grep -q "$NODE_VERSION"; then
+    echo "→ Node v$NODE_VERSION already installed but SKIP_INSTALLED=false — reinstalling..."
+    nvm install "$NODE_VERSION"
+    echo "✓ Node v$NODE_VERSION reinstalled"
 else
     nvm install "$NODE_VERSION"
     echo "✓ Node v$NODE_VERSION installed"

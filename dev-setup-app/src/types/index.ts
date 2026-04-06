@@ -53,6 +53,7 @@ export interface UserConfig {
   node_version: string;
   venv_name: string;
   skip_already_installed: boolean;
+  skip_wsl_backup: boolean;
   openvpn_config_path: string | null;
   git_name: string | null;
   git_email: string | null;

@@ -120,44 +120,64 @@ if ($extensions.Count -eq 0) {
 
 Write-Output "→ Found $($extensions.Count) recommended extension(s)."
 
-# ── Install into WSL remote (ERC) ────────────────────────────────────────────
+# ── Skip WSL extension installation (already done in step 11) ───────────────
 Write-Output ""
-Write-Output "→ Installing into WSL remote (wsl+ERC)..."
+Write-Output "→ Skipping WSL extension installation..."
+Write-Output "  WSL extensions are already installed in step 11 (Configure VS Code for Windows)."
+Write-Output "  This step only installs the Remote-WSL extension on Windows host."
+Write-Output ""
+
+# For reporting purposes
 $wslSuccess = 0
-$wslFail    = 0
-foreach ($ext in $extensions) {
-    Write-Output "  [WSL] $ext"
-    $result = & $codePath --remote "wsl+ERC" --install-extension $ext --force 2>&1
-    $result | ForEach-Object { Write-Output "    $_" }
-    if ($LASTEXITCODE -eq 0) { $wslSuccess++ } else {
-        Write-Output "    [exit $LASTEXITCODE]"
-        $wslFail++
-    }
-}
-Write-Output "  WSL remote: $wslSuccess installed, $wslFail failed."
+$wslFail = 0
 
-# ── Install locally (Windows host) ──────────────────────────────────────────
+# ── Install Remote-WSL extension on Windows host ───────────────────────────
 Write-Output ""
-Write-Output "→ Installing into local Windows VS Code..."
+Write-Output "→ Installing Remote-WSL extension on Windows host..."
+
 $localSuccess = 0
-$localFail    = 0
-foreach ($ext in $extensions) {
-    Write-Output "  [local] $ext"
-    $result = & $codePath --install-extension $ext --force 2>&1
-    $result | ForEach-Object { Write-Output "    $_" }
-    if ($LASTEXITCODE -eq 0) { $localSuccess++ } else {
-        Write-Output "    [exit $LASTEXITCODE]"
-        $localFail++
+$localFail = 0
+
+# Only ms-vscode-remote.remote-wsl needs to be installed on Windows
+# All other extensions are installed in the WSL remote environment above
+$remoteWslExt = 'ms-vscode-remote.remote-wsl'
+if ($extensions -contains $remoteWslExt) {
+    Write-Output "  [Windows] $remoteWslExt"
+    try {
+        # Use simple command as this usually works on Windows
+        $result = & $codePath --install-extension $remoteWslExt --force 2>&1
+        $result | ForEach-Object { Write-Output "    $_" }
+        if ($LASTEXITCODE -eq 0) {
+            $localSuccess = 1
+            Write-Output "    ✓ Remote-WSL extension installed"
+        } else {
+            $localFail = 1
+            Write-Output "    ✗ Failed (exit code $LASTEXITCODE)"
+        }
+    } catch {
+        $localFail = 1
+        Write-Output "    ✗ ERROR: $($_.Exception.Message)"
     }
+} else {
+    Write-Output "  ⚠ Remote-WSL extension not in workspace recommendations"
 }
-Write-Output "  Local: $localSuccess installed, $localFail failed."
 
 Write-Output ""
-if ($wslFail -gt 0 -or $localFail -gt 0) {
-    Write-Output "⚠ Some extensions failed to install — check output above."
-    Write-Output "  This is often a network issue. Retry this step once connected."
+Write-Output "═══════════════════════════════════════════════════════════"
+Write-Output "  WSL Extensions    : Skipped (already installed in step 11)"
+Write-Output "  Windows Extension : $localSuccess/1 installed"
+Write-Output "═══════════════════════════════════════════════════════════"
+
+if ($localFail -gt 0) {
+    Write-Output ""
+    Write-Output "⚠ Remote-WSL extension failed to install."
+    Write-Output ""
+    Write-Output "  Manual installation:"
+    Write-Output "    code --install-extension ms-vscode-remote.remote-wsl"
 } else {
-    Write-Output "✓ All $($extensions.Count) extensions installed successfully."
+    Write-Output ""
+    Write-Output "✓ Remote-WSL extension installed successfully!"
+    Write-Output "  WSL development extensions were already installed in step 11."
 }
 
 } catch {

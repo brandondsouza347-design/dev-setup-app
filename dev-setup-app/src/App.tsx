@@ -129,6 +129,8 @@ function App() {
               logs={setup.logs}
               isReverting={setup.isReverting}
               revertComplete={setup.revertComplete}
+              config={setup.config}
+              onUpdateConfig={setup.updateConfig}
               onStartRevert={setup.startRevert}
               onRetryStep={setup.retryRevertStep}
               onReset={setup.resetRevert}

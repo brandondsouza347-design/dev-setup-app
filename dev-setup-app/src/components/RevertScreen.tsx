@@ -1,7 +1,7 @@
 // components/RevertScreen.tsx — Safely revert the Windows WSL environment to clean state
 import { useState } from 'react';
 import { AlertTriangle, RotateCcw, ChevronDown, ChevronRight, CheckCircle, XCircle, Loader, Circle, ShieldAlert } from 'lucide-react';
-import type { OsInfo, SetupStep, StepResult, LogEntry } from '../types';
+import type { OsInfo, SetupStep, StepResult, LogEntry, UserConfig } from '../types';
 
 interface Props {
   osInfo: OsInfo | null;
@@ -10,6 +10,8 @@ interface Props {
   logs: Record<string, LogEntry[]>;
   isReverting: boolean;
   revertComplete: boolean;
+  config: UserConfig;
+  onUpdateConfig: (key: keyof UserConfig, value: string | boolean) => void;
   onStartRevert: () => Promise<void>;
   onRetryStep: (id: string) => Promise<void>;
   onReset: () => void;
@@ -22,6 +24,8 @@ export const RevertScreen: React.FC<Props> = ({
   logs,
   isReverting,
   revertComplete,
+  config,
+  onUpdateConfig,
   onStartRevert,
   onRetryStep,
   onReset,
@@ -181,28 +185,43 @@ export const RevertScreen: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Backup guarantee callout */}
-        <div className="flex gap-4 p-5 bg-amber-50 dark:bg-amber-900/20 border-2 border-amber-400 dark:border-amber-600 rounded-xl mb-8">
-          <ShieldAlert className="w-6 h-6 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-          <div className="text-sm">
-            <p className="font-bold text-amber-800 dark:text-amber-300 mb-1">
-              Backup is mandatory — deletion is blocked until it succeeds
-            </p>
-            <p className="text-amber-700 dark:text-amber-400 mb-2">
-              Before any data is removed, the ERC distro is exported to{' '}
-              <code className="bg-amber-100 dark:bg-amber-800 px-1 rounded">%USERPROFILE%\WSL_Backup\</code>.
-              The script verifies the file exists on disk and is a valid non-empty TAR.
-              If the backup cannot be confirmed, <strong>the revert stops immediately</strong> and
-              nothing is deleted.
-            </p>
-            <p className="text-amber-700 dark:text-amber-400">
-              To restore after revert:{' '}
-              <code className="text-xs bg-amber-100 dark:bg-amber-800 px-1.5 py-0.5 rounded block mt-1">
-                wsl --import ERC &lt;install-dir&gt; %USERPROFILE%\WSL_Backup\erc_backup_*.tar --version 2
-              </code>
-            </p>
+        {/* Backup option / guarantee callout */}
+        {!config.skip_wsl_backup ? (
+          <div className="flex gap-4 p-5 bg-amber-50 dark:bg-amber-900/20 border-2 border-amber-400 dark:border-amber-600 rounded-xl mb-8">
+            <ShieldAlert className="w-6 h-6 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div className="text-sm">
+              <p className="font-bold text-amber-800 dark:text-amber-300 mb-1">
+                Backup is mandatory — deletion is blocked until it succeeds
+              </p>
+              <p className="text-amber-700 dark:text-amber-400 mb-2">
+                Before any data is removed, the ERC distro is exported to{' '}
+                <code className="bg-amber-100 dark:bg-amber-800 px-1 rounded">%USERPROFILE%\WSL_Backup\</code>.
+                The script verifies the file exists on disk and is a valid non-empty TAR.
+                If the backup cannot be confirmed, <strong>the revert stops immediately</strong> and
+                nothing is deleted.
+              </p>
+              <p className="text-amber-700 dark:text-amber-400">
+                To restore after revert:{' '}
+                <code className="text-xs bg-amber-100 dark:bg-amber-800 px-1.5 py-0.5 rounded block mt-1">
+                  wsl --import ERC &lt;install-dir&gt; %USERPROFILE%\WSL_Backup\erc_backup_*.tar --version 2
+                </code>
+              </p>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="flex gap-4 p-5 bg-red-50 dark:bg-red-900/20 border-2 border-red-400 dark:border-red-600 rounded-xl mb-8">
+            <AlertTriangle className="w-6 h-6 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+            <div className="text-sm">
+              <p className="font-bold text-red-800 dark:text-red-300 mb-1">
+                ⚠ Backup is DISABLED — No restore option available
+              </p>
+              <p className="text-red-700 dark:text-red-400">
+                Your WSL environment will be <strong>permanently deleted</strong> with no backup created.
+                Once deleted, <strong>you cannot restore the distro</strong>. This is faster but irreversible.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* What will happen */}
         <div className="mb-8">
@@ -234,6 +253,23 @@ export const RevertScreen: React.FC<Props> = ({
           </div>
         </div>
 
+        {/* Skip backup checkbox */}
+        <label className="flex items-start gap-3 cursor-pointer mb-6 select-none p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+          <input
+            type="checkbox"
+            checked={config.skip_wsl_backup}
+            onChange={(e) => onUpdateConfig('skip_wsl_backup', e.target.checked)}
+            disabled={hasStarted}
+            className="mt-0.5 w-4 h-4 accent-red-600 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+          />
+          <span className="text-sm text-gray-700 dark:text-gray-300">
+            <strong>Skip WSL backup</strong> (faster, but no restore option){' '}
+            <span className="text-gray-500 dark:text-gray-400">
+              — Disables backup creation for faster revert. Only use if you don't need to restore the distro.
+            </span>
+          </span>
+        </label>
+
         {/* Confirmation checkbox */}
         <label className="flex items-start gap-3 cursor-pointer mb-8 select-none">
           <input
@@ -243,9 +279,18 @@ export const RevertScreen: React.FC<Props> = ({
             className="mt-0.5 w-4 h-4 accent-red-600 cursor-pointer"
           />
           <span className="text-sm text-gray-700 dark:text-gray-300">
-            I understand that a <strong>verified backup will be created first</strong> and that,
-            once the backup is confirmed on disk, my WSL environment will be{' '}
-            <strong>permanently deleted</strong>. I have saved any important work inside the ERC distro.
+            {config.skip_wsl_backup ? (
+              <>
+                I understand that <strong>NO backup will be created</strong> and my WSL environment will be{' '}
+                <strong>permanently deleted with no way to restore it</strong>. I have saved any important work.
+              </>
+            ) : (
+              <>
+                I understand that a <strong>verified backup will be created first</strong> and that,
+                once the backup is confirmed on disk, my WSL environment will be{' '}
+                <strong>permanently deleted</strong>. I have saved any important work inside the ERC distro.
+              </>
+            )}
           </span>
         </label>
 

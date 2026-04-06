@@ -98,13 +98,11 @@ cat > "$SETTINGS_FILE" << SETTINGS_JSON
     "terminal.integrated.env.osx": {
         "PATH": "\${env:PATH}:$HOME/.pyenv/bin:$HOME/.nvm/versions/node/${SETUP_NODE_VERSION:-16.20.2}/bin"
     },
-    "python.defaultInterpreterPath": "${PYTHON_PATH}",
     "[python]": {
         "editor.defaultFormatter": "ms-python.black-formatter"
     },
     "black-formatter.args": ["--line-length", "88"],
     "pylint.enabled": true,
-    "pylint.interpreter": ["${PYTHON_PATH}"],
     "eslint.enable": true,
     "git.autofetch": true,
     "git.confirmSync": false,

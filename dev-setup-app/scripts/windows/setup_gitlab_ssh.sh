@@ -3,6 +3,7 @@
 set -euo pipefail
 
 GITLAB_REPO_URL="${SETUP_GITLAB_REPO_URL:-git@gitlab.toogoerp.net:root/erc.git}"
+SKIP_INSTALLED="${SETUP_SKIP_INSTALLED:-true}"
 # Extract host from git@host:path format
 GITLAB_HOST=$(echo "$GITLAB_REPO_URL" | sed 's/git@\([^:]*\):.*/\1/')
 
@@ -39,8 +40,22 @@ if [ -n "${SETUP_GITLAB_PAT:-}" ]; then
         KEY_ALREADY_EXISTS=true
     fi
 
-    if $KEY_ALREADY_EXISTS; then
+    if [ "$SKIP_INSTALLED" = "true" ] && $KEY_ALREADY_EXISTS; then
         echo "✓ SSH key (fingerprint: $LOCAL_FP) is already registered in GitLab — skipping upload."
+    elif $KEY_ALREADY_EXISTS; then
+        echo "→ SSH key already registered but SKIP_INSTALLED=false — re-uploading..."
+        HTTP_CODE=$(curl -s -o /tmp/gl_key_resp.json -w "%{http_code}" \
+            --request POST "https://${GITLAB_HOST}/api/v4/user/keys" \
+            --header "PRIVATE-TOKEN: ${SETUP_GITLAB_PAT}" \
+            --header "Content-Type: application/json" \
+            --data "{\"title\":\"DevSetup-$(hostname)-$(date +%Y%m%d)-forced\",\"key\":\"${PUB_KEY}\"}" \
+            --insecure --max-time 15 \
+            2>/dev/null || echo "000")
+        if [ "$HTTP_CODE" = "201" ]; then
+            echo "✓ SSH key re-uploaded successfully."
+        else
+            echo "  Note: Re-upload returned HTTP $HTTP_CODE (key may already exist with same fingerprint)"
+        fi
     else
         echo "  Key not found in GitLab — uploading now..."
         HTTP_CODE=$(curl -s -o /tmp/gl_key_resp.json -w "%{http_code}" \

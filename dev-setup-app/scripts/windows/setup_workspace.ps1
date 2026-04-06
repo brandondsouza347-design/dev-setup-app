@@ -134,9 +134,48 @@ if (-not $wsContent) {
 }
 
 # ═════════════════════════════════════════════════════════════════════════════
-# Sub-task 3/3: Open VS Code workspace
+# Sub-task 3/3: Configure workspace trust and open VS Code workspace
 # ═════════════════════════════════════════════════════════════════════════════
-Write-Output "→ Sub-task 3/3: Opening VS Code workspace..."
+Write-Output "→ Sub-task 3/3: Configuring workspace trust and opening VS Code..."
+
+# Add workspace to VS Code trusted folders
+# This prevents the "Do you trust this workspace?" prompt
+$wslSettingsPath = '/root/.vscode-server/data/User/settings.json'
+$trustScript = @"
+import json, os
+settings_path = '$wslSettingsPath'
+workspace_dir = '$cloneDir'
+
+# Load existing settings or create new
+if os.path.exists(settings_path):
+    with open(settings_path, 'r') as f:
+        settings = json.load(f)
+else:
+    settings = {}
+
+# Add workspace to trusted folders
+if 'security.workspace.trust.untrustedFiles' not in settings:
+    settings['security.workspace.trust.untrustedFiles'] = 'open'
+
+if 'security.workspace.trust.emptyWindow' not in settings:
+    settings['security.workspace.trust.emptyWindow'] = False
+
+# Ensure directory exists
+os.makedirs(os.path.dirname(settings_path), exist_ok=True)
+
+# Write settings
+with open(settings_path, 'w') as f:
+    json.dump(settings, f, indent=2)
+
+print(f'Workspace trust configured for {workspace_dir}')
+"@
+
+$trustScriptPath = Join-Path $ipcDir 'trust_workspace.py'
+[System.IO.File]::WriteAllText($trustScriptPath, $trustScript, $utf8NoBom)
+
+$wslTrustScript = '/mnt/c/Users/Public/DevSetupAgent/trust_workspace.py'
+wsl -d ERC --user root -- bash -c "python3 '$wslTrustScript'"
+Write-Output "  ✓ Workspace trust configured"
 
 # Build a vscode-remote URI so the workspace opens under WSL: ERC (remote mode)
 # rather than as a Windows UNC path (which opens in local/Windows mode).

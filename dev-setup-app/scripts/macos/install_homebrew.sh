@@ -2,6 +2,8 @@
 # install_homebrew.sh — Install Homebrew (macOS package manager)
 set -euo pipefail
 
+SKIP_INSTALLED="${SETUP_SKIP_INSTALLED:-true}"
+
 echo "==> Checking Homebrew..."
 
 # Detect architecture to set correct prefix
@@ -14,10 +16,15 @@ fi
 
 BREW_BIN="$BREW_PREFIX/bin/brew"
 
-if command -v brew &>/dev/null || [ -x "$BREW_BIN" ]; then
+if [ "$SKIP_INSTALLED" = "true" ] && (command -v brew &>/dev/null || [ -x "$BREW_BIN" ]); then
     echo "✓ Homebrew already installed: $(brew --version | head -1)"
     echo "==> Updating Homebrew..."
     brew update --quiet
+    exit 0
+elif command -v brew &>/dev/null || [ -x "$BREW_BIN" ]; then
+    echo "→ Homebrew already installed but SKIP_INSTALLED=false — updating..."
+    brew update
+    echo "✓ Homebrew updated: $(brew --version | head -1)"
     exit 0
 fi
 

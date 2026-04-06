@@ -43,6 +43,7 @@ pub struct ConfigInput {
     pub node_version: String,
     pub venv_name: String,
     pub skip_already_installed: bool,
+    pub skip_wsl_backup: bool,
     pub openvpn_config_path: Option<String>,
     pub git_name: Option<String>,
     pub git_email: Option<String>,
@@ -787,7 +788,7 @@ fn check_admin_rights() -> PrereqCheck {
 }
 
 fn check_openvpn_installed(os: &str) -> PrereqCheck {
-    let (app_name, check_cmd) = if os == "windows" {
+    let (app_name, _check_cmd) = if os == "windows" {
         ("OpenVPN", "openvpn")
     } else {
         ("Tunnelblick", "tunnelblick")
@@ -1037,6 +1038,7 @@ pub fn save_config(
         node_version: input.node_version,
         venv_name: input.venv_name,
         skip_already_installed: input.skip_already_installed,
+        skip_wsl_backup: input.skip_wsl_backup,
         openvpn_config_path: input.openvpn_config_path,
         git_name: input.git_name,
         git_email: input.git_email,

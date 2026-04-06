@@ -5,6 +5,7 @@ set -euo pipefail
 
 PG_PASSWORD="${SETUP_POSTGRES_PASSWORD:-postgres}"
 PG_DB="${SETUP_POSTGRES_DB:-toogo_pos}"
+SKIP_INSTALLED="${SETUP_SKIP_INSTALLED:-true}"
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 # In tar-imported WSL, /run is a tmpfs that is empty on every WSL start.
@@ -133,7 +134,7 @@ start_postgres() {
 echo "==> setup_postgres_wsl: checking PostgreSQL..."
 
 # ─── Check if already installed ─────────────────────────────────────────────
-if command -v psql &>/dev/null; then
+if [ "$SKIP_INSTALLED" = "true" ] && command -v psql &>/dev/null; then
     PG_VER="$(psql --version 2>/dev/null | awk '{print $3}')"
     echo "✓ PostgreSQL $PG_VER already installed — checking service..."
 
@@ -157,18 +158,29 @@ if command -v psql &>/dev/null; then
     start_postgres
     echo "✓ PostgreSQL is now running"
     exit 0
+elif command -v psql &>/dev/null; then
+    echo "→ PostgreSQL already installed but SKIP_INSTALLED=false — reconfiguring and restarting..."
+    PG_VER="$(psql --version 2>/dev/null | awk '{print $3}')"
+    echo "  Installed version: $PG_VER"
+    # Ensure clean state before restart
+    ensure_pg_socket_dir
+    start_postgres
+    echo "✓ PostgreSQL restarted successfully"
+    # Continue to configuration steps below
 fi
 
+if ! command -v psql &>/dev/null; then
 # ─── Install ─────────────────────────────────────────────────────────────────
-echo "==> Step 1: Installing PostgreSQL..."
-sudo apt-get update -q
-sudo apt-get install -y -q postgresql postgresql-contrib
-echo "✓ PostgreSQL installed"
+    echo "==> Step 1: Installing PostgreSQL..."
+    sudo apt-get update -q
+    sudo apt-get install -y -q postgresql postgresql-contrib
+    echo "✓ PostgreSQL installed"
 
-# ─── Start service ───────────────────────────────────────────────────────────
-echo "==> Step 2: Starting PostgreSQL service..."
-start_postgres
-echo "✓ PostgreSQL started"
+    # ─── Start service ───────────────────────────────────────────────────────────
+    echo "==> Step 2: Starting PostgreSQL service..."
+    start_postgres
+    echo "✓ PostgreSQL started"
+fi
 
 # ─── Set postgres superuser password ─────────────────────────────────────────
 echo "==> Step 3: Configuring postgres role password..."

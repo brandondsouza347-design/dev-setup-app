@@ -2,11 +2,13 @@
 # setup_redis.sh — Install Redis via Homebrew and start as a service
 set -euo pipefail
 
+SKIP_INSTALLED="${SETUP_SKIP_INSTALLED:-true}"
+
 echo "==> Redis Setup"
 
 # ─── Check if already running ───────────────────────────────────────────────
 
-if pgrep -x redis-server >/dev/null 2>&1; then
+if [ "$SKIP_INSTALLED" = "true" ] && pgrep -x redis-server >/dev/null 2>&1; then
     if redis-cli ping 2>/dev/null | grep -q "PONG"; then
         echo "✓ Redis is already running and responding to PING"
         REDIS_PID=$(pgrep -x redis-server)
@@ -18,7 +20,7 @@ if pgrep -x redis-server >/dev/null 2>&1; then
 fi
 
 # Also check if port 6379 is in use
-if lsof -Pi :6379 -sTCP:LISTEN -t >/dev/null 2>&1; then
+if [ "$SKIP_INSTALLED" = "true" ] && lsof -Pi :6379 -sTCP:LISTEN -t >/dev/null 2>&1; then
     echo "✓ Redis appears to be running (port 6379 in use)"
     echo "   Skipping setup to avoid disruption"
     exit 0
@@ -28,8 +30,12 @@ fi
 
 echo "==> Step 1: Installing Redis..."
 
-if command -v redis-server &>/dev/null; then
+if [ "$SKIP_INSTALLED" = "true" ] && command -v redis-server &>/dev/null; then
     echo "✓ Redis already installed: $(redis-server --version)"
+elif command -v redis-server &>/dev/null; then
+    echo "→ Redis already installed but SKIP_INSTALLED=false — upgrading..."
+    brew upgrade redis 2>/dev/null || brew install redis
+    echo "✓ Redis upgraded: $(redis-server --version)"
 else
     brew install redis
     echo "✓ Redis installed"

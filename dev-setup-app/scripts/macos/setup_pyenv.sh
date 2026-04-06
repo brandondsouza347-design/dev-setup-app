@@ -25,8 +25,16 @@ add_to_zshrc() {
 
 echo "==> Step 1: Installing pyenv..."
 
-if command -v pyenv &>/dev/null; then
+if [ "$SKIP_INSTALLED" = "true" ] && command -v pyenv &>/dev/null; then
     echo "✓ pyenv already installed: $(pyenv --version)"
+elif command -v pyenv &>/dev/null; then
+    echo "→ pyenv already installed but SKIP_INSTALLED=false — reinstalling via Homebrew..."
+    if command -v brew &>/dev/null; then
+        brew reinstall pyenv
+        echo "✓ pyenv reinstalled"
+    else
+        echo "  Warning: Homebrew not available, keeping existing pyenv installation"
+    fi
 else
     if command -v brew &>/dev/null; then
         echo "   Installing pyenv via Homebrew..."
@@ -59,8 +67,19 @@ echo "✓ pyenv shell integration configured"
 
 echo "==> Step 3: Installing pyenv-virtualenv..."
 
-if pyenv commands 2>/dev/null | grep -q "virtualenv"; then
-    echo "✓ pyenv-virtualenv already available"
+if [ "$SKIP_INSTALLED" = "true" ] && pyenv commands 2>/dev/null | grep -q "virtualenv"; then
+    echo "✓ pyenv-virtualenv already available — skipping"
+elif pyenv commands 2>/dev/null | grep -q "virtualenv"; then
+    echo "→ pyenv-virtualenv already installed but SKIP_INSTALLED=false — reinstalling..."
+    if command -v brew &>/dev/null; then
+        brew reinstall pyenv-virtualenv
+        echo "✓ pyenv-virtualenv reinstalled"
+    else
+        rm -rf "$HOME/.pyenv/plugins/pyenv-virtualenv"
+        git clone https://github.com/pyenv/pyenv-virtualenv.git \
+            "$HOME/.pyenv/plugins/pyenv-virtualenv"
+        echo "✓ pyenv-virtualenv reinstalled"
+    fi
 else
     if command -v brew &>/dev/null; then
         brew install pyenv-virtualenv
@@ -89,8 +108,14 @@ export PKG_CONFIG_PATH="$BREW_PREFIX/opt/openssl/lib/pkgconfig:$BREW_PREFIX/opt/
 
 echo "==> Step 5: Installing Python $PYTHON_VERSION via pyenv..."
 
-if pyenv versions --bare 2>/dev/null | grep -q "^${PYTHON_VERSION}$"; then
-    echo "✓ Python $PYTHON_VERSION already installed"
+if [ "$SKIP_INSTALLED" = "true" ] && pyenv versions --bare 2>/dev/null | grep -q "^${PYTHON_VERSION}$"; then
+    echo "✓ Python $PYTHON_VERSION already installed — skipping"
+elif pyenv versions --bare 2>/dev/null | grep -q "^${PYTHON_VERSION}$"; then
+    echo "→ Python $PYTHON_VERSION already installed but SKIP_INSTALLED=false — reinstalling..."
+    echo "   This may take 5–10 minutes (compiling from source)..."
+    pyenv uninstall -f "$PYTHON_VERSION" 2>/dev/null || true
+    pyenv install "$PYTHON_VERSION"
+    echo "✓ Python $PYTHON_VERSION reinstalled"
 else
     echo "   This may take 5–10 minutes (compiling from source)..."
     pyenv install "$PYTHON_VERSION"
@@ -101,8 +126,13 @@ fi
 
 echo "==> Step 6: Creating virtualenv '$VENV_NAME' using Python $PYTHON_VERSION..."
 
-if pyenv versions --bare 2>/dev/null | grep -q "^${VENV_NAME}$"; then
-    echo "✓ Virtualenv '$VENV_NAME' already exists"
+if [ "$SKIP_INSTALLED" = "true" ] && pyenv versions --bare 2>/dev/null | grep -q "^${VENV_NAME}$"; then
+    echo "✓ Virtualenv '$VENV_NAME' already exists — skipping"
+elif pyenv versions --bare 2>/dev/null | grep -q "^${VENV_NAME}$"; then
+    echo "→ Virtualenv '$VENV_NAME' already exists but SKIP_INSTALLED=false — recreating..."
+    pyenv virtualenv-delete -f "$VENV_NAME" 2>/dev/null || true
+    pyenv virtualenv "$PYTHON_VERSION" "$VENV_NAME"
+    echo "✓ Virtualenv '$VENV_NAME' recreated"
 else
     pyenv virtualenv "$PYTHON_VERSION" "$VENV_NAME"
     echo "✓ Virtualenv '$VENV_NAME' created"

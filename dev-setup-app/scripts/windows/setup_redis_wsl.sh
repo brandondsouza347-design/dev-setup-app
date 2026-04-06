@@ -4,6 +4,8 @@
 # WSL Note: Without systemd, uses 'service' command or direct redis-server daemonization
 set -euo pipefail
 
+SKIP_INSTALLED="${SETUP_SKIP_INSTALLED:-true}"
+
 echo "==> setup_redis_wsl: checking Redis..."
 
 # ─── Helper: Start Redis with fallback chain ────────────────────────────────
@@ -55,7 +57,7 @@ start_redis() {
 }
 
 # ─── Check if already installed ─────────────────────────────────────────────
-if command -v redis-cli &>/dev/null; then
+if [ "$SKIP_INSTALLED" = "true" ] && command -v redis-cli &>/dev/null; then
     REDIS_VER="$(redis-cli --version 2>/dev/null | awk '{print $2}')"
     echo "✓ Redis $REDIS_VER already installed — checking service..."
 
@@ -85,6 +87,22 @@ if command -v redis-cli &>/dev/null; then
         sudo service redis-server status 2>&1 || true
         ss -ltnp 2>/dev/null | grep 6379 || echo "  Port 6379 is not listening"
         pgrep -a redis-server || echo "  No redis-server process found"
+    fi
+    exit 0
+elif command -v redis-cli &>/dev/null; then
+    REDIS_VER="$(redis-cli --version 2>/dev/null | awk '{print $2}')"
+    echo "→ Redis $REDIS_VER already installed but SKIP_INSTALLED=false — restarting..."
+    # Kill existing process if running
+    if pgrep -x redis-server >/dev/null 2>&1; then
+        echo "  Stopping existing Redis process..."
+        pkill -x redis-server 2>/dev/null || true
+        sleep 2
+    fi
+    # Restart Redis
+    if start_redis; then
+        echo "✓ Redis restarted successfully"
+    else
+        echo "  WARNING: Redis restart failed"
     fi
     exit 0
 fi

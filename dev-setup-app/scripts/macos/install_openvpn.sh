@@ -2,9 +2,15 @@
 # install_openvpn.sh (macOS) — Install Tunnelblick and stage the .ovpn config
 set -euo pipefail
 
+SKIP_INSTALLED="${SETUP_SKIP_INSTALLED:-true}"
+
 echo "→ Step 1/2: Checking Tunnelblick installation..."
-if brew list --cask tunnelblick &>/dev/null 2>&1; then
+if [ "$SKIP_INSTALLED" = "true" ] && brew list --cask tunnelblick &>/dev/null 2>&1; then
     echo "✓ Tunnelblick is already installed — skipping."
+elif brew list --cask tunnelblick &>/dev/null 2>&1; then
+    echo "→ Tunnelblick already installed but SKIP_INSTALLED=false — reinstalling..."
+    brew reinstall --cask tunnelblick
+    echo "✓ Tunnelblick reinstalled."
 else
     echo "→ Installing Tunnelblick via Homebrew..."
     brew install --cask tunnelblick

@@ -842,6 +842,7 @@ fn build_env(config: &UserConfig) -> Vec<(String, String)> {
         ("SETUP_POSTGRES_PASSWORD".to_string(), config.postgres_password.clone()),
         ("SETUP_POSTGRES_DB".to_string(), config.postgres_db_name.clone()),
         ("SETUP_SKIP_INSTALLED".to_string(), config.skip_already_installed.to_string()),
+        ("SETUP_SKIP_WSL_BACKUP".to_string(), config.skip_wsl_backup.to_string()),
     ];
     if let Some(ref tar_path) = config.wsl_tar_path {
         env.push(("SETUP_WSL_TAR_PATH".to_string(), tar_path.clone()));

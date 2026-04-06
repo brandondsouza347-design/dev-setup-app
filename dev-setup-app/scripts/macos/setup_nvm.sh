@@ -4,6 +4,7 @@ set -euo pipefail
 
 NODE_VERSION="${SETUP_NODE_VERSION:-22.10.0}"
 NVM_VERSION="0.40.1"
+SKIP_INSTALLED="${SETUP_SKIP_INSTALLED:-true}"
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -29,9 +30,14 @@ echo "==> Step 1: Installing NVM v$NVM_VERSION..."
 
 export NVM_DIR="$HOME/.nvm"
 
-if [ -s "$NVM_DIR/nvm.sh" ]; then
-    echo "✓ NVM already installed"
+if [ "$SKIP_INSTALLED" = "true" ] && [ -s "$NVM_DIR/nvm.sh" ]; then
+    echo "✓ NVM already installed — skipping"
     source "$NVM_DIR/nvm.sh"
+elif [ -s "$NVM_DIR/nvm.sh" ]; then
+    echo "→ NVM already installed but SKIP_INSTALLED=false — reinstalling..."
+    curl -o- "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh" | bash
+    source "$NVM_DIR/nvm.sh"
+    echo "✓ NVM reinstalled"
 else
     echo "   Downloading and installing NVM..."
     curl -o- "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh" | bash
@@ -53,8 +59,12 @@ add_to_zshrc "" "" "$NVM_ZSHRC_BLOCK" "NVM_DIR nvm.sh"
 
 echo "==> Step 3: Installing Node.js $NODE_VERSION..."
 
-if nvm ls "$NODE_VERSION" 2>/dev/null | grep -q "$NODE_VERSION"; then
-    echo "✓ Node $NODE_VERSION already installed"
+if [ "$SKIP_INSTALLED" = "true" ] && nvm ls "$NODE_VERSION" 2>/dev/null | grep -q "$NODE_VERSION"; then
+    echo "✓ Node $NODE_VERSION already installed — skipping"
+elif nvm ls "$NODE_VERSION" 2>/dev/null | grep -q "$NODE_VERSION"; then
+    echo "→ Node $NODE_VERSION already installed but SKIP_INSTALLED=false — reinstalling..."
+    nvm install "$NODE_VERSION"
+    echo "✓ Node $NODE_VERSION reinstalled"
 else
     nvm install "$NODE_VERSION"
     echo "✓ Node $NODE_VERSION installed"

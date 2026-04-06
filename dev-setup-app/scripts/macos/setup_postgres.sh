@@ -5,6 +5,7 @@ set -euo pipefail
 PG_VERSION="16"
 PG_PASSWORD="${SETUP_POSTGRES_PASSWORD:-postgres}"
 PG_DB="${SETUP_POSTGRES_DB:-dev_db}"
+SKIP_INSTALLED="${SETUP_SKIP_INSTALLED:-true}"
 CURRENT_USER="$(whoami)"
 ARCH="$(uname -m)"
 
@@ -32,7 +33,7 @@ echo "    Data dir  : $PG_DATA"
 
 # ─── Check if already running ───────────────────────────────────────────────
 
-if command -v "$PG_BIN/pg_isready" &>/dev/null && "$PG_BIN/pg_isready" -q 2>/dev/null; then
+if [ "$SKIP_INSTALLED" = "true" ] && command -v "$PG_BIN/pg_isready" &>/dev/null && "$PG_BIN/pg_isready" -q 2>/dev/null; then
     echo "✓ PostgreSQL is already running and accepting connections"
     echo "   $("$PG_BIN/pg_isready")"
     echo ""
@@ -41,7 +42,7 @@ if command -v "$PG_BIN/pg_isready" &>/dev/null && "$PG_BIN/pg_isready" -q 2>/dev
 fi
 
 # Also check if port 5432 is in use
-if lsof -Pi :5432 -sTCP:LISTEN -t >/dev/null 2>&1; then
+if [ "$SKIP_INSTALLED" = "true" ] && lsof -Pi :5432 -sTCP:LISTEN -t >/dev/null 2>&1; then
     echo "✓ PostgreSQL appears to be running (port 5432 in use)"
     echo "   Skipping setup to avoid disruption"
     exit 0

@@ -67,8 +67,14 @@ fi
 
 # ─── 2. Install pyenv ───────────────────────────────────────────────────────
 echo "==> Step 2: Installing pyenv via curl..."
-if command -v pyenv &>/dev/null && [ -d "$HOME/.pyenv" ]; then
+if [ "$SKIP_INSTALLED" = "true" ] && command -v pyenv &>/dev/null && [ -d "$HOME/.pyenv" ]; then
     echo "✓ pyenv already installed: $(pyenv --version)"
+elif command -v pyenv &>/dev/null && [ -d "$HOME/.pyenv" ]; then
+    echo "→ pyenv already installed but SKIP_INSTALLED=false — reinstalling..."
+    export GIT_SSL_NO_VERIFY=1
+    rm -rf "$HOME/.pyenv"
+    curl -fsSL --insecure https://pyenv.run | bash
+    echo "✓ pyenv reinstalled"
 else
     # GIT_SSL_NO_VERIFY bypasses corporate CA for git clones inside pyenv.run
     export GIT_SSL_NO_VERIFY=1
@@ -94,8 +100,16 @@ echo "✓ pyenv shell integration configured"
 
 # ─── 4. Install Python ──────────────────────────────────────────────────────
 echo "==> Step 4: Installing Python $PYTHON_VERSION..."
-if [ -d "$HOME/.pyenv/versions/$PYTHON_VERSION" ]; then
-    echo "✓ Python $PYTHON_VERSION already installed"
+if [ "$SKIP_INSTALLED" = "true" ] && [ -d "$HOME/.pyenv/versions/$PYTHON_VERSION" ]; then
+    echo "✓ Python $PYTHON_VERSION already installed — skipping"
+elif [ -d "$HOME/.pyenv/versions/$PYTHON_VERSION" ]; then
+    echo "→ Python $PYTHON_VERSION already installed but SKIP_INSTALLED=false — reinstalling..."
+    # PYTHON_BUILD_CURL_OPTS bypasses corporate CA when pyenv downloads Python source
+    export PYTHON_BUILD_CURL_OPTS="-k"
+    export GIT_SSL_NO_VERIFY=1
+    pyenv uninstall -f "$PYTHON_VERSION" 2>/dev/null || true
+    pyenv install "$PYTHON_VERSION"
+    echo "✓ Python $PYTHON_VERSION reinstalled"
 else
     # PYTHON_BUILD_CURL_OPTS bypasses corporate CA when pyenv downloads Python source
     export PYTHON_BUILD_CURL_OPTS="-k"
