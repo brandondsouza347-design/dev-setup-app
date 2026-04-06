@@ -1,9 +1,12 @@
 // commands.rs — Tauri command handlers exposed to the React frontend
 use crate::admin_agent::{execute_via_agent, AdminAgentState};
 use crate::orchestrator::{execute_script_with_retry, find_step_by_id, get_revert_steps_for_os, get_steps_for_os, SetupStep};
-use crate::state::{AppState, CancelState, StepStatus, UserConfig};
+use crate::state::{AppState, CancelState, StepStatus, UserConfig, RunHistory, FailedStepLog, RunType, RunStatus};
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
+use std::path::PathBuf;
+use std::fs;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 
 #[derive(Serialize)]
@@ -51,6 +54,10 @@ pub struct ConfigInput {
     pub gitlab_repo_url: Option<String>,
     pub clone_dir: Option<String>,
     pub wsl_default_user: String,
+    pub tenant_name: String,
+    pub cluster_name: String,
+    pub aws_access_key_id: Option<String>,
+    pub aws_secret_access_key: Option<String>,
 }
 
 /// Detects the current operating system.
@@ -147,9 +154,15 @@ pub async fn start_setup(
     app_handle: AppHandle,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<(), String> {
+    let started_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| format!("System time error: {}", e))?
+        .as_secs() as i64;
+
     let (steps, config) = {
         let mut s = state.lock().unwrap();
         s.setup_started = true;
+        s.setup_started_at = Some(started_at);
         s.current_step_index = 0;
         let os = detect_os();
         let steps = get_steps_for_os(&os.os);
@@ -227,6 +240,40 @@ pub async fn start_setup(
 
         let _ = window.emit("step_status", serde_json::json!({ "id": step.id, "status": "done" }));
     }
+
+    let completed_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| format!("System time error: {}", e))?
+        .as_secs() as i64;
+
+    // Collect failed steps for history
+    let (started_at, failed_steps) = {
+        let s = state.lock().unwrap();
+        let failed_steps: Vec<FailedStepLog> = s.step_states
+            .iter()
+            .filter(|(_, ss)| ss.status == StepStatus::Failed)
+            .map(|(_, ss)| FailedStepLog {
+                step_id: ss.id.clone(),
+                step_name: steps.iter().find(|st| st.id == ss.id).map(|st| st.title.clone()).unwrap_or_else(|| ss.id.clone()),
+                error_message: ss.error.clone(),
+                logs: ss.logs.clone(),
+            })
+            .collect();
+        (s.setup_started_at.unwrap_or(started_at), failed_steps)
+    };
+
+    let run_status = if failed_steps.is_empty() { RunStatus::Success } else { RunStatus::Failed };
+
+    // Save run history
+    let _ = save_run_history(
+        app_handle.clone(),
+        RunType::Setup,
+        started_at,
+        completed_at,
+        run_status,
+        steps.len(),
+        failed_steps,
+    ).await;
 
     {
         let mut s = state.lock().unwrap();
@@ -325,6 +372,16 @@ pub async fn start_revert(
     app_handle: AppHandle,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<(), String> {
+    let started_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| format!("System time error: {}", e))?
+        .as_secs() as i64;
+
+    {
+        let mut s = state.lock().unwrap();
+        s.revert_started_at = Some(started_at);
+    }
+
     let config = {
         state.lock().unwrap().config.clone()
     };
@@ -354,10 +411,50 @@ pub async fn start_revert(
                     "step_status",
                     serde_json::json!({ "id": step.id, "status": "failed", "error": err }),
                 );
+
+                // Save failed revert history
+                let completed_at = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map_err(|e| format!("System time error: {}", e))?
+                    .as_secs() as i64;
+
+                let failed_step = FailedStepLog {
+                    step_id: step.id.clone(),
+                    step_name: step.title.clone(),
+                    error_message: Some(err.clone()),
+                    logs: vec![],
+                };
+
+                let _ = save_run_history(
+                    app_handle.clone(),
+                    RunType::Revert,
+                    started_at,
+                    completed_at,
+                    RunStatus::Failed,
+                    revert_steps.len(),
+                    vec![failed_step],
+                ).await;
+
                 return Err(format!("Revert step '{}' failed: {}", step.title, err));
             }
         }
     }
+
+    let completed_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| format!("System time error: {}", e))?
+        .as_secs() as i64;
+
+    // Save successful revert history
+    let _ = save_run_history(
+        app_handle.clone(),
+        RunType::Revert,
+        started_at,
+        completed_at,
+        RunStatus::Success,
+        revert_steps.len(),
+        vec![],
+    ).await;
 
     let _ = window.emit("revert_complete", true);
     Ok(())
@@ -1029,6 +1126,15 @@ pub fn save_config(
     state: State<'_, Mutex<AppState>>,
 ) -> Result<(), String> {
     let mut s = state.lock().unwrap();
+
+    // Helper to use default if value is None or empty
+    let or_default = |opt: Option<String>, default: &str| -> Option<String> {
+        match opt {
+            Some(v) if !v.trim().is_empty() => Some(v),
+            _ => Some(default.to_string()),
+        }
+    };
+
     s.config = UserConfig {
         wsl_tar_path: input.wsl_tar_path,
         wsl_install_dir: input.wsl_install_dir,
@@ -1043,9 +1149,25 @@ pub fn save_config(
         git_name: input.git_name,
         git_email: input.git_email,
         gitlab_pat: input.gitlab_pat,
-        gitlab_repo_url: input.gitlab_repo_url,
-        clone_dir: input.clone_dir,
-        wsl_default_user: input.wsl_default_user,
+        gitlab_repo_url: or_default(input.gitlab_repo_url, "git@gitlab.toogoerp.net:root/erc.git"),
+        clone_dir: or_default(input.clone_dir, "/home/ubuntu/VsCodeProjects/erc"),
+        wsl_default_user: if input.wsl_default_user.trim().is_empty() {
+            "ubuntu".to_string()
+        } else {
+            input.wsl_default_user
+        },
+        tenant_name: if input.tenant_name.trim().is_empty() {
+            "erckinetic".to_string()
+        } else {
+            input.tenant_name
+        },
+        cluster_name: if input.cluster_name.trim().is_empty() {
+            "stable".to_string()
+        } else {
+            input.cluster_name
+        },
+        aws_access_key_id: input.aws_access_key_id.filter(|s| !s.trim().is_empty()),
+        aws_secret_access_key: input.aws_secret_access_key.filter(|s| !s.trim().is_empty()),
     };
     Ok(())
 }
@@ -1087,6 +1209,126 @@ pub async fn shutdown_admin_agent(
 ) -> Result<(), String> {
     log::info!("shutdown_admin_agent: shutting down admin agent...");
     crate::admin_agent::shutdown_agent(&agent_state).await;
+    Ok(())
+}
+
+// ─── Run History Commands ─────────────────────────────────────────────────────
+
+/// Returns the path to the run history JSON file in app local data directory.
+fn get_run_history_path(app_handle: &AppHandle) -> Result<PathBuf, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+
+    // Ensure directory exists
+    fs::create_dir_all(&app_data_dir)
+        .map_err(|e| format!("Failed to create app data dir: {}", e))?;
+
+    Ok(app_data_dir.join("run_history.json"))
+}
+
+/// Saves a run history entry to the JSON file, auto-pruning to last 20 runs.
+#[tauri::command]
+pub async fn save_run_history(
+    app_handle: AppHandle,
+    run_type: RunType,
+    started_at: i64,
+    completed_at: i64,
+    status: RunStatus,
+    step_count: usize,
+    failed_steps: Vec<FailedStepLog>,
+) -> Result<(), String> {
+    let history_path = get_run_history_path(&app_handle)?;
+
+    // Load existing history
+    let mut history: Vec<RunHistory> = if history_path.exists() {
+        let content = fs::read_to_string(&history_path)
+            .map_err(|e| format!("Failed to read history file: {}", e))?;
+        serde_json::from_str(&content).unwrap_or_else(|_| Vec::new())
+    } else {
+        Vec::new()
+    };
+
+    // Create new entry with timestamp-based ID
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| format!("System time error: {}", e))?;
+    let id = format!("{}-{}", now.as_secs(), now.subsec_nanos());
+
+    let new_entry = RunHistory {
+        id,
+        run_type,
+        started_at,
+        completed_at,
+        status,
+        step_count,
+        failed_steps,
+    };
+
+    // Add new entry and prune to last 20
+    history.push(new_entry);
+    if history.len() > 20 {
+        let skip_count = history.len() - 20;
+        history = history.into_iter().skip(skip_count).collect();
+    }
+
+    // Save back to file
+    let json = serde_json::to_string_pretty(&history)
+        .map_err(|e| format!("Failed to serialize history: {}", e))?;
+    fs::write(&history_path, json)
+        .map_err(|e| format!("Failed to write history file: {}", e))?;
+
+    log::info!("Saved run history entry (total: {})", history.len());
+    Ok(())
+}
+
+/// Loads the last 20 run history entries from the JSON file.
+#[tauri::command]
+pub async fn load_run_history(app_handle: AppHandle) -> Result<Vec<RunHistory>, String> {
+    let history_path = get_run_history_path(&app_handle)?;
+
+    if !history_path.exists() {
+        return Ok(Vec::new());
+    }
+
+    let content = fs::read_to_string(&history_path)
+        .map_err(|e| format!("Failed to read history file: {}", e))?;
+
+    let history: Vec<RunHistory> = serde_json::from_str(&content)
+        .unwrap_or_else(|_| Vec::new());
+
+    Ok(history)
+}
+
+/// Clears selected run history entries by their IDs.
+#[tauri::command]
+pub async fn clear_run_history_by_ids(
+    app_handle: AppHandle,
+    ids: Vec<String>,
+) -> Result<(), String> {
+    let history_path = get_run_history_path(&app_handle)?;
+
+    if !history_path.exists() {
+        return Ok(());
+    }
+
+    let content = fs::read_to_string(&history_path)
+        .map_err(|e| format!("Failed to read history file: {}", e))?;
+
+    let mut history: Vec<RunHistory> = serde_json::from_str(&content)
+        .unwrap_or_else(|_| Vec::new());
+
+    // Filter out entries with matching IDs
+    history.retain(|entry| !ids.contains(&entry.id));
+
+    // Save back to file
+    let json = serde_json::to_string_pretty(&history)
+        .map_err(|e| format!("Failed to serialize history: {}", e))?;
+    fs::write(&history_path, json)
+        .map_err(|e| format!("Failed to write history file: {}", e))?;
+
+    log::info!("Cleared {} history entries (remaining: {})", ids.len(), history.len());
     Ok(())
 }
 

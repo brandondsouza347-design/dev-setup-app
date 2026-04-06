@@ -447,6 +447,66 @@ fn all_steps() -> Vec<SetupStep> {
             estimated_minutes: 1,
             rollback_steps: vec![],
         },
+        SetupStep {
+            id: "install_pip_requirements".to_string(),
+            title: "Install pip Requirements".to_string(),
+            description: "Install all Python dependencies from requirements.txt in the project root using the activated virtual environment.".to_string(),
+            platform: Platform::Windows,
+            category: StepCategory::Python,
+            required: false,
+            estimated_minutes: 5,
+            rollback_steps: vec![],
+        },
+        SetupStep {
+            id: "migrate_shared".to_string(),
+            title: "Migrate Shared Schemas".to_string(),
+            description: "Run Django migrate_schemas --shared to create the shared database schema structure.".to_string(),
+            platform: Platform::Windows,
+            category: StepCategory::Database,
+            required: false,
+            estimated_minutes: 2,
+            rollback_steps: vec![],
+        },
+        SetupStep {
+            id: "copy_tenant".to_string(),
+            title: "Copy Tenant Data".to_string(),
+            description: "Run Django copy_tenant command to set up tenant data from the configured cluster and tenant.".to_string(),
+            platform: Platform::Windows,
+            category: StepCategory::Database,
+            required: false,
+            estimated_minutes: 10,
+            rollback_steps: vec![],
+        },
+        SetupStep {
+            id: "install_frontend_deps".to_string(),
+            title: "Install Frontend Dependencies".to_string(),
+            description: "Run npm install in the client directory to install all Node.js packages required for frontend development.".to_string(),
+            platform: Platform::Windows,
+            category: StepCategory::Node,
+            required: false,
+            estimated_minutes: 5,
+            rollback_steps: vec![],
+        },
+        SetupStep {
+            id: "start_frontend_watch".to_string(),
+            title: "Build Front-End Assets".to_string(),
+            description: "Run npm build to compile front-end assets for production use.".to_string(),
+            platform: Platform::Windows,
+            category: StepCategory::Node,
+            required: false,
+            estimated_minutes: 5,
+            rollback_steps: vec![],
+        },
+        SetupStep {
+            id: "start_gunicorn".to_string(),
+            title: "Start Gunicorn Server".to_string(),
+            description: "Start the Gunicorn ASGI server with uvicorn worker in the background for local development.".to_string(),
+            platform: Platform::Windows,
+            category: StepCategory::Python,
+            required: false,
+            estimated_minutes: 1,
+            rollback_steps: vec![],
+        },
         // ── GitLab onboarding track (macOS) ─────────────────────────────────────────────────
         SetupStep {
             id: "gitlab_ssh_mac".to_string(),
@@ -558,7 +618,21 @@ pub async fn execute_script(
         if !script_file.is_empty() {
             cmd.arg(&script_file);
         }
-        cmd.envs(build_env(config))
+
+        let env_vars = build_env(config);
+
+        // For WSL commands, we need to set WSLENV to forward environment variables
+        // from Windows into the WSL environment. Without this, the SETUP_* vars
+        // are only visible in the Windows process, not inside WSL.
+        if program == "wsl" {
+            let wslenv_vars: Vec<String> = env_vars.iter()
+                .map(|(key, _)| key.clone())
+                .collect();
+            let wslenv_value = wslenv_vars.join(":");
+            cmd.env("WSLENV", wslenv_value);
+        }
+
+        cmd.envs(env_vars)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         // Prevent a visible console window from flashing when spawning
@@ -606,6 +680,11 @@ pub async fn execute_script(
         "import_wsl_tar" => 1800,           // 30 min
         "revert_wsl_distro" => 1800,        // 30 min
         "clone_repo" | "clone_repo_mac" => 3600, // 60 min — large repo on first clone
+        "install_pip_requirements" => 1800, // 30 min — many Python packages to install
+        "install_frontend_deps" => 1800,    // 30 min — many Node.js packages to install
+        "start_frontend_watch" => 1800,     // 30 min — npm build can take time
+        "migrate_shared" => 1800,           // 30 min — database migrations can be slow
+        "copy_tenant" => 7200,              // 120 min — copying tenant data from remote can take a while
         _ => 900,                           // 15 min default
     };
     let timeout = std::time::Duration::from_secs(timeout_secs);
@@ -761,6 +840,12 @@ fn build_script_command(
         "setup_workspace"      => ("windows", "setup_workspace.ps1",          "powershell", vec![]),
         "install_workspace_extensions" => ("windows", "install_workspace_extensions.ps1", "powershell", vec![]),
         "python_interpreter"   => ("windows", "python_interpreter.sh",        "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
+        "install_pip_requirements" => ("windows", "install_pip_requirements.sh", "wsl",     vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
+        "migrate_shared"       => ("windows", "migrate_shared.sh",            "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
+        "copy_tenant"          => ("windows", "copy_tenant.sh",               "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
+        "install_frontend_deps" => ("windows", "install_frontend_deps.sh",    "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
+        "start_frontend_watch" => ("windows", "start_frontend_watch.sh",      "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
+        "start_gunicorn"       => ("windows", "start_gunicorn.sh",            "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
         // macOS GitLab onboarding track
         "install_openvpn_mac"     => ("macos", "install_openvpn.sh",     "bash", vec![]),
         "connect_vpn_mac"         => ("macos", "connect_vpn.sh",         "bash", vec![]),
@@ -867,6 +952,14 @@ fn build_env(config: &UserConfig) -> Vec<(String, String)> {
     }
     if let Some(ref v) = config.clone_dir {
         env.push(("SETUP_CLONE_DIR".to_string(), v.clone()));
+    }
+    env.push(("SETUP_TENANT_NAME".to_string(), config.tenant_name.clone()));
+    env.push(("SETUP_CLUSTER_NAME".to_string(), config.cluster_name.clone()));
+    if let Some(ref key_id) = config.aws_access_key_id {
+        env.push(("SETUP_AWS_ACCESS_KEY_ID".to_string(), key_id.clone()));
+    }
+    if let Some(ref secret_key) = config.aws_secret_access_key {
+        env.push(("SETUP_AWS_SECRET_ACCESS_KEY".to_string(), secret_key.clone()));
     }
     env
 }

@@ -64,6 +64,15 @@ pub struct UserConfig {
     pub clone_dir: Option<String>,
     #[serde(default)]
     pub wsl_default_user: String,
+    #[serde(default)]
+    pub tenant_name: String,
+    #[serde(default)]
+    pub cluster_name: String,
+    /// AWS credentials - NOT persisted to disk for security
+    #[serde(skip)]
+    pub aws_access_key_id: Option<String>,
+    #[serde(skip)]
+    pub aws_secret_access_key: Option<String>,
 }
 
 impl Default for UserConfig {
@@ -82,9 +91,13 @@ impl Default for UserConfig {
             git_name: None,
             git_email: None,
             gitlab_pat: None,
-            gitlab_repo_url: None,
-            clone_dir: None,
+            gitlab_repo_url: Some("git@gitlab.toogoerp.net:root/erc.git".to_string()),
+            clone_dir: Some("/home/ubuntu/VsCodeProjects/erc".to_string()),
             wsl_default_user: "ubuntu".to_string(),
+            tenant_name: "erckinetic".to_string(),
+            cluster_name: "stable".to_string(),
+            aws_access_key_id: None,
+            aws_secret_access_key: None,
         }
     }
 }
@@ -96,6 +109,8 @@ pub struct AppState {
     pub setup_started: bool,
     pub setup_complete: bool,
     pub config: UserConfig,
+    pub setup_started_at: Option<i64>,
+    pub revert_started_at: Option<i64>,
 }
 
 impl AppState {
@@ -134,4 +149,40 @@ impl CancelState {
     pub fn is_cancelled(&self) -> bool {
         self.cancel_requested.load(Ordering::SeqCst)
     }
+}
+
+// ── Run History ──────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum RunType {
+    Setup,
+    Revert,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum RunStatus {
+    Success,
+    Failed,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FailedStepLog {
+    pub step_id: String,
+    pub step_name: String,
+    pub error_message: Option<String>,
+    pub logs: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunHistory {
+    pub id: String,              // UUID
+    pub run_type: RunType,
+    pub started_at: i64,          // Unix timestamp (seconds)
+    pub completed_at: i64,        // Unix timestamp (seconds)
+    pub status: RunStatus,
+    pub step_count: usize,
+    pub failed_steps: Vec<FailedStepLog>,
 }

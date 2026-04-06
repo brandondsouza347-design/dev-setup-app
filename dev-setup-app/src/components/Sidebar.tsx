@@ -1,5 +1,5 @@
 // components/Sidebar.tsx — Navigation sidebar showing step progress
-import { Monitor, Apple, Settings, List, Activity, CheckSquare, Home, RotateCcw } from 'lucide-react';
+import { Monitor, Apple, Settings, List, Activity, CheckSquare, Home, RotateCcw, Clock } from 'lucide-react';
 import type { OsInfo, WizardPage, SetupStep, StepResult } from '../types';
 import { StepBadge } from './StepBadge';
 
@@ -10,6 +10,7 @@ interface Props {
   stepResults: Record<string, StepResult>;
   currentStepIndex: number;
   setupStarted: boolean;
+  historyCount: number;
   onNavigate: (page: WizardPage) => void;
 }
 
@@ -20,6 +21,7 @@ export const Sidebar: React.FC<Props> = ({
   stepResults,
   currentStepIndex,
   setupStarted,
+  historyCount,
   onNavigate,
 }) => {
   const isMac = osInfo?.os === 'macos';
@@ -30,13 +32,14 @@ export const Sidebar: React.FC<Props> = ({
     ? 'Windows'
     : 'Linux';
 
-  const navItems: { id: WizardPage; label: string; icon: React.ReactNode }[] = [
+  const navItems: { id: WizardPage; label: string; icon: React.ReactNode; badge?: number }[] = [
     { id: 'welcome',  label: 'Welcome',   icon: <Home className="w-4 h-4" /> },
     { id: 'prereqs',  label: 'Pre-checks', icon: <CheckSquare className="w-4 h-4" /> },
     { id: 'settings', label: 'Settings',   icon: <Settings className="w-4 h-4" /> },
     { id: 'wizard',   label: 'Plan',       icon: <List className="w-4 h-4" /> },
     { id: 'progress', label: 'Progress',   icon: <Activity className="w-4 h-4" /> },
     { id: 'revert',   label: 'Revert',     icon: <RotateCcw className="w-4 h-4" /> },
+    { id: 'history',  label: 'History',    icon: <Clock className="w-4 h-4" />, badge: historyCount },
   ];
 
   return (
@@ -57,7 +60,7 @@ export const Sidebar: React.FC<Props> = ({
 
       {/* Navigation */}
       <nav className="px-3 py-3 border-b border-gray-700">
-        {navItems.map(({ id, label, icon }) => (
+        {navItems.map(({ id, label, icon, badge }) => (
           <button
             key={id}
             onClick={() => onNavigate(id)}
@@ -68,7 +71,12 @@ export const Sidebar: React.FC<Props> = ({
             }`}
           >
             {icon}
-            {label}
+            <span className="flex-1">{label}</span>
+            {badge !== undefined && badge > 0 && (
+              <span className="px-1.5 py-0.5 text-xs rounded-full bg-gray-700 text-gray-300">
+                {badge}
+              </span>
+            )}
           </button>
         ))}
       </nav>

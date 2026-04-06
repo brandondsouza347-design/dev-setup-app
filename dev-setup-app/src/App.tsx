@@ -8,6 +8,7 @@ import { WizardStepList } from './components/WizardStepList';
 import { ProgressDashboard } from './components/ProgressDashboard';
 import { CompleteScreen } from './components/CompleteScreen';
 import { RevertScreen } from './components/RevertScreen';
+import { HistoryScreen } from './components/HistoryScreen';
 
 function App() {
   const setup = useSetup();
@@ -25,6 +26,7 @@ function App() {
         stepResults={setup.stepResults}
         currentStepIndex={setup.currentStepIndex}
         setupStarted={setup.setupStarted}
+        historyCount={setup.history.length}
         onNavigate={setup.setPage}
       />
 
@@ -134,6 +136,17 @@ function App() {
               onStartRevert={setup.startRevert}
               onRetryStep={setup.retryRevertStep}
               onReset={setup.resetRevert}
+              onClearLogs={setup.clearLogs}
+            />
+          </div>
+        )}
+
+        {setup.page === 'history' && (
+          <div className="h-full overflow-hidden flex flex-col">
+            <HistoryScreen
+              history={setup.history}
+              onClearSelected={setup.clearHistoryByIds}
+              onRefresh={setup.loadHistory}
             />
           </div>
         )}

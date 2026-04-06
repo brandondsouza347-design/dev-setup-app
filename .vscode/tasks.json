@@ -1,0 +1,11 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Cargo Update",
+			"type": "shell",
+			"command": "cd dev-setup-app\\src-tauri; cargo update",
+			"isBackground": false
+		}
+	]
+}

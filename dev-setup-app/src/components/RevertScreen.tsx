@@ -1,6 +1,6 @@
 // components/RevertScreen.tsx — Safely revert the Windows WSL environment to clean state
-import { useState } from 'react';
-import { AlertTriangle, RotateCcw, ChevronDown, ChevronRight, CheckCircle, XCircle, Loader, Circle, ShieldAlert } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { AlertTriangle, RotateCcw, ChevronDown, ChevronRight, CheckCircle, XCircle, Loader, Circle, ShieldAlert, ScrollText, Trash2 } from 'lucide-react';
 import type { OsInfo, SetupStep, StepResult, LogEntry, UserConfig } from '../types';
 
 interface Props {
@@ -15,6 +15,7 @@ interface Props {
   onStartRevert: () => Promise<void>;
   onRetryStep: (id: string) => Promise<void>;
   onReset: () => void;
+  onClearLogs: () => void;
 }
 
 export const RevertScreen: React.FC<Props> = ({
@@ -29,9 +30,26 @@ export const RevertScreen: React.FC<Props> = ({
   onStartRevert,
   onRetryStep,
   onReset,
+  onClearLogs,
 }) => {
   const [confirmed, setConfirmed] = useState(false);
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
+  const [logsOpen, setLogsOpen] = useState(true);
+  const logsEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll logs to bottom when new entries arrive
+  useEffect(() => {
+    if (logsOpen) {
+      logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [logs, logsOpen]);
+
+  // Flatten + sort all revert log entries by timestamp
+  const allLogs: (LogEntry & { stepTitle: string })[] = revertSteps
+    .flatMap((step) =>
+      (logs[step.id] ?? []).map((entry) => ({ ...entry, stepTitle: step.title }))
+    )
+    .sort((a, b) => (a.ts ?? 0) - (b.ts ?? 0));
 
   const isWindows = osInfo?.os === 'windows';
   const hasStarted = isReverting || Object.keys(revertResults).length > 0;
@@ -161,6 +179,55 @@ export const RevertScreen: React.FC<Props> = ({
               />
             );
           })}
+        </div>
+
+        {/* Aggregated Live Revert Logs panel */}
+        <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+          {/* Panel header / toggle */}
+          <button
+            className="w-full flex items-center justify-between px-6 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors select-none"
+            onClick={() => setLogsOpen((o) => !o)}
+          >
+            <span className="flex items-center gap-2">
+              <ScrollText className="w-4 h-4 text-gray-400" />
+              Live Revert Logs
+              {allLogs.length > 0 && (
+                <span className="px-1.5 py-0.5 text-xs rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
+                  {allLogs.length}
+                </span>
+              )}
+            </span>
+            <div className="flex items-center gap-2">
+              {allLogs.length > 0 && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onClearLogs();
+                  }}
+                  className="p-1.5 text-gray-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                  title="Clear logs"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
+              {logsOpen
+                ? <ChevronDown className="w-4 h-4 text-gray-400" />
+                : <ChevronRight className="w-4 h-4 text-gray-400" />}
+            </div>
+          </button>
+
+          {logsOpen && (
+            <div className="border-t border-gray-100 dark:border-gray-700 bg-gray-950 max-h-56 overflow-y-auto font-mono text-xs px-4 py-3 space-y-0.5">
+              {allLogs.length === 0 ? (
+                <p className="text-gray-500 italic">No log output yet.</p>
+              ) : (
+                allLogs.map((entry, i) => (
+                  <AggregatedLogLine key={i} entry={entry} />
+                ))
+              )}
+              <div ref={logsEndRef} />
+            </div>
+          )}
         </div>
       </div>
     );
@@ -392,6 +459,27 @@ const StepRow: React.FC<StepRowProps> = ({ step, status, logs, expanded, onToggl
           </button>
         </div>
       )}
+    </div>
+  );
+};
+
+// ─── Log line renderer ───────────────────────────────────────────────────────
+
+const LOG_COLORS: Record<string, string> = {
+  info:    'text-gray-300',
+  warn:    'text-yellow-400',
+  error:   'text-red-400',
+  success: 'text-green-400',
+};
+
+const AggregatedLogLine: React.FC<{ entry: LogEntry & { stepTitle: string } }> = ({ entry }) => {
+  const colorClass = LOG_COLORS[entry.level] ?? 'text-gray-300';
+  const ts = entry.ts ? new Date(entry.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
+  return (
+    <div className={`leading-5 whitespace-pre-wrap break-all ${colorClass}`}>
+      <span className="text-gray-600 select-none">{ts && `${ts} `}</span>
+      <span className="text-red-400 select-none">[{entry.stepTitle}] </span>
+      {entry.line}
     </div>
   );
 };

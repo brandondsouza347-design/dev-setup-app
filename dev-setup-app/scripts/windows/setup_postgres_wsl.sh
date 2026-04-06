@@ -87,13 +87,13 @@ start_postgres() {
     fi
 
     # ── Fallback: service ────────────────────────────────────────────────────
-    if ! pg_isready -q 2>/dev/null; then
+    if ! timeout 5s pg_isready -q 2>/dev/null; then
         echo "  Falling back to: service postgresql start..."
         sudo service postgresql start 2>&1 || true
     fi
 
     # ── Fallback: direct postgres binary startup ─────────────────────────────
-    if ! pg_isready -q 2>/dev/null && [ -n "$ver" ]; then
+    if ! timeout 5s pg_isready -q 2>/dev/null && [ -n "$ver" ]; then
         echo "  Falling back to: direct postgres binary startup..."
         sudo -u postgres /usr/lib/postgresql/$ver/bin/postgres -D /var/lib/postgresql/$ver/main -c config_file=/etc/postgresql/$ver/main/postgresql.conf >/dev/null 2>&1 &
         sleep 2
@@ -103,7 +103,7 @@ start_postgres() {
     echo "  Polling pg_isready (max 30s)..."
     local i=0
     while [ $i -lt 15 ]; do
-        if pg_isready -q 2>/dev/null; then
+        if timeout 5s pg_isready -q 2>/dev/null; then
             echo "  PostgreSQL is accepting connections"
             return 0
         fi
@@ -139,7 +139,7 @@ if [ "$SKIP_INSTALLED" = "true" ] && command -v psql &>/dev/null; then
     echo "✓ PostgreSQL $PG_VER already installed — checking service..."
 
     # Check if already running and accepting connections
-    if pg_isready -q 2>/dev/null; then
+    if timeout 5s pg_isready -q 2>/dev/null; then
         echo "✓ PostgreSQL is already running and accepting connections"
         # Verify port is listening
         if ss -ltn 2>/dev/null | grep -q ':5432 '; then
@@ -184,23 +184,28 @@ fi
 
 # ─── Set postgres superuser password ─────────────────────────────────────────
 echo "==> Step 3: Configuring postgres role password..."
-sudo -u postgres psql -c "ALTER USER postgres PASSWORD '${PG_PASSWORD}';" 2>/dev/null && \
-    echo "✓ postgres role password set" || \
-    echo "  Warning: could not set postgres role password (may already be set)"
+if timeout 10s sudo -u postgres psql -c "ALTER USER postgres PASSWORD '${PG_PASSWORD}';" 2>/dev/null; then
+    echo "✓ postgres role password set"
+else
+    echo "  Warning: could not set postgres role password (timeout or already set)"
+fi
 
 # ─── Create project database ──────────────────────────────────────────────────
 echo "==> Step 4: Creating database '$PG_DB'..."
-DB_EXISTS="$(sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='${PG_DB}'" 2>/dev/null || echo '')"
+DB_EXISTS="$(timeout 10s sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='${PG_DB}'" 2>/dev/null || echo '')"
 if [ "$DB_EXISTS" = "1" ]; then
     echo "✓ Database '$PG_DB' already exists — skipping"
 else
-    sudo -u postgres createdb "$PG_DB"
-    echo "✓ Database '$PG_DB' created"
+    if timeout 15s sudo -u postgres createdb "$PG_DB" 2>/dev/null; then
+        echo "✓ Database '$PG_DB' created"
+    else
+        echo "  Warning: could not create database (timeout or already exists)"
+    fi
 fi
 
 # ─── Verify ──────────────────────────────────────────────────────────────────
 echo "==> Step 5: Verification..."
-sudo -u postgres psql -c "\l" 2>/dev/null | grep "$PG_DB" && echo "✓ Database visible in PostgreSQL" || true
+timeout 10s sudo -u postgres psql -c "\l" 2>/dev/null | grep "$PG_DB" && echo "✓ Database visible in PostgreSQL" || echo "  Note: Database listing timed out or unavailable"
 echo ""
 echo "✓ PostgreSQL setup complete"
 echo "  Version : $(psql --version)"

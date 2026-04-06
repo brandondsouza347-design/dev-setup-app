@@ -15,6 +15,7 @@ import type {
   StepStatus,
   WizardPage,
   AdminAgentStatus,
+  RunHistory,
 } from '../types';
 
 interface UseSetupReturn {
@@ -41,6 +42,7 @@ interface UseSetupReturn {
   adminAgentError: string | null;
   adminAgentLogs: string[];
   prereqLogs: LogEntry[];
+  history: RunHistory[];
 
   // Actions
   setPage: (p: WizardPage) => void;
@@ -66,6 +68,9 @@ interface UseSetupReturn {
   // Log management
   clearLogs: () => void;
   clearPrereqLogs: () => void;
+  // History management
+  loadHistory: () => Promise<void>;
+  clearHistoryByIds: (ids: string[]) => Promise<void>;
 }
 
 export function useSetup(): UseSetupReturn {
@@ -91,6 +96,10 @@ export function useSetup(): UseSetupReturn {
     gitlab_repo_url: 'git@gitlab.toogoerp.net:root/erc.git',
     clone_dir: '/home/ubuntu/VsCodeProjects/erc',
     wsl_default_user: 'ubuntu',
+    tenant_name: 'erckinetic',
+    cluster_name: 'stable',
+    aws_access_key_id: null,
+    aws_secret_access_key: null,
   });
   const [prereqChecks, setPrereqChecks] = useState<PrereqCheck[]>([]);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
@@ -104,6 +113,7 @@ export function useSetup(): UseSetupReturn {
   const [adminAgentError, setAdminAgentError] = useState<string | null>(null);
   const [adminAgentLogs, setAdminAgentLogs] = useState<string[]>([]);
   const [prereqLogs, setPrereqLogs] = useState<LogEntry[]>([]);
+  const [history, setHistory] = useState<RunHistory[]>([]);
   const [revertSteps, setRevertSteps] = useState<SetupStep[]>([]);
   const [revertResults, setRevertResults] = useState<Record<string, StepResult>>({});
   const [isReverting, setIsReverting] = useState(false);
@@ -129,6 +139,10 @@ export function useSetup(): UseSetupReturn {
 
         const cfg = await invoke<UserConfig>('get_config');
         setConfig(cfg);
+
+        // Load run history
+        const hist = await invoke<RunHistory[]>('load_run_history');
+        setHistory(hist);
 
         // Restore previous state if any
         const state = await invoke<FullState>('get_state');
@@ -236,17 +250,31 @@ export function useSetup(): UseSetupReturn {
         }));
       });
 
-      const unlistenComplete = await listen<boolean>('setup_complete', () => {
+      const unlistenComplete = await listen<boolean>('setup_complete', async () => {
         if (!mounted) return;
         setSetupComplete(true);
         setIsRunning(false);
         setPage('complete');
+        // Reload history to show the completed run
+        try {
+          const hist = await invoke<RunHistory[]>('load_run_history');
+          setHistory(hist);
+        } catch (err) {
+          console.error('Failed to reload history after setup complete:', err);
+        }
       });
 
-      const unlistenRevertComplete = await listen<boolean>('revert_complete', () => {
+      const unlistenRevertComplete = await listen<boolean>('revert_complete', async () => {
         if (!mounted) return;
         setRevertComplete(true);
         setIsReverting(false);
+        // Reload history to show the completed revert
+        try {
+          const hist = await invoke<RunHistory[]>('load_run_history');
+          setHistory(hist);
+        } catch (err) {
+          console.error('Failed to reload history after revert complete:', err);
+        }
       });
 
       const unlistenAgentLog = await listen<{ line: string; level: string }>('admin_agent_log', (event) => {
@@ -446,6 +474,23 @@ export function useSetup(): UseSetupReturn {
     setPrereqLogs([]);
   }, []);
 
+  const loadHistory = useCallback(async () => {
+    try {
+      const hist = await invoke<RunHistory[]>('load_run_history');
+      setHistory(hist);
+    } catch (err) {
+      console.error('Failed to load history:', err);
+    }
+  }, []);
+
+  const clearHistoryByIds = useCallback(async (ids: string[]) => {
+    try {
+      await invoke('clear_run_history_by_ids', { ids });
+    } catch (err) {
+      console.error('Failed to clear history:', err);
+    }
+  }, []);
+
   return {
     osInfo,
     steps,
@@ -483,9 +528,12 @@ export function useSetup(): UseSetupReturn {
     adminAgentError,
     adminAgentLogs,
     prereqLogs,
+    history,
     requestAdminAgent,
     shutdownAdminAgent,
     clearLogs,
     clearPrereqLogs,
+    loadHistory,
+    clearHistoryByIds,
   };
 }

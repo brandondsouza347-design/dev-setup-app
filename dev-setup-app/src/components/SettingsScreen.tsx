@@ -242,7 +242,7 @@ export const SettingsScreen: React.FC<Props> = ({ config, osInfo, onUpdate, onSa
           <Field label="Repository URL" hint="SSH URL of the repo to clone">
             <input
               type="text"
-              value={config.gitlab_repo_url ?? ''}
+              value={config.gitlab_repo_url ?? 'git@gitlab.toogoerp.net:root/erc.git'}
               onChange={(e) => update('gitlab_repo_url', e.target.value || null)}
               className="input"
               placeholder="git@gitlab.toogoerp.net:root/erc.git"
@@ -251,10 +251,56 @@ export const SettingsScreen: React.FC<Props> = ({ config, osInfo, onUpdate, onSa
           <Field label="Clone Directory" hint={isWindows ? 'WSL path e.g. /home/ubuntu/VsCodeProjects/erc' : 'e.g. ~/VsCodeProjects/erc'}>
             <input
               type="text"
-              value={config.clone_dir ?? ''}
+              value={config.clone_dir ?? '/home/ubuntu/VsCodeProjects/erc'}
               onChange={(e) => update('clone_dir', e.target.value || null)}
               className="input"
               placeholder={isWindows ? '/home/ubuntu/VsCodeProjects/erc' : '~/VsCodeProjects/erc'}
+            />
+          </Field>
+        </Section>
+
+        <Section title="Django Configuration">
+          <Field label="Tenant Name" hint="Tenant identifier for copy_tenant command and browser URL (e.g., erckinetic)">
+            <input
+              type="text"
+              value={config.tenant_name}
+              onChange={(e) => update('tenant_name', e.target.value)}
+              className="input"
+              placeholder="erckinetic"
+            />
+          </Field>
+          <Field label="Cluster Name" hint="Cluster name for copy_tenant command (e.g., stable)">
+            <input
+              type="text"
+              value={config.cluster_name}
+              onChange={(e) => update('cluster_name', e.target.value)}
+              className="input"
+              placeholder="stable"
+            />
+          </Field>
+        </Section>
+
+        <Section title="AWS Credentials (Session Only - Not Saved)">
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 text-yellow-800 dark:text-yellow-300 text-sm mb-4">
+            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+            <span>AWS credentials are used for Django S3/SNS operations. They are NOT saved to disk - you'll need to re-enter them each session for security.</span>
+          </div>
+          <Field label="AWS Access Key ID" hint="Required for S3 and SNS operations in Django commands">
+            <input
+              type="password"
+              value={config.aws_access_key_id ?? ''}
+              onChange={(e) => update('aws_access_key_id', e.target.value || null)}
+              className="input"
+              placeholder="AKIA..."
+            />
+          </Field>
+          <Field label="AWS Secret Access Key" hint="Required for S3 and SNS operations in Django commands">
+            <input
+              type="password"
+              value={config.aws_secret_access_key ?? ''}
+              onChange={(e) => update('aws_secret_access_key', e.target.value || null)}
+              className="input"
+              placeholder="Secret key..."
             />
           </Field>
         </Section>

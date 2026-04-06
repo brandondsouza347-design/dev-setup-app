@@ -61,6 +61,10 @@ export interface UserConfig {
   gitlab_repo_url: string | null;
   clone_dir: string | null;
   wsl_default_user: string;
+  tenant_name: string;
+  cluster_name: string;
+  aws_access_key_id?: string | null;
+  aws_secret_access_key?: string | null;
 }
 
 export interface FullState {
@@ -109,6 +113,28 @@ export type WizardPage =
   | 'wizard'
   | 'progress'
   | 'complete'
-  | 'revert';
+  | 'revert'
+  | 'history';
 
 export type AdminAgentStatus = 'idle' | 'requesting' | 'ready' | 'error';
+
+// Run History types
+export type RunType = 'setup' | 'revert';
+export type RunStatus = 'success' | 'failed' | 'cancelled';
+
+export interface FailedStepLog {
+  step_id: string;
+  step_name: string;
+  error_message: string | null;
+  logs: string[];
+}
+
+export interface RunHistory {
+  id: string;              // UUID/timestamp-based ID
+  run_type: RunType;
+  started_at: number;      // Unix timestamp (seconds)
+  completed_at: number;    // Unix timestamp (seconds)
+  status: RunStatus;
+  step_count: number;
+  failed_steps: FailedStepLog[];
+}

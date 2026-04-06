@@ -48,6 +48,9 @@ fn main() {
             commands::shutdown_admin_agent,
             commands::open_url,
             commands::stop_setup,
+            commands::save_run_history,
+            commands::load_run_history,
+            commands::clear_run_history_by_ids,
         ])
         .setup(|_app| {
             log::info!(
