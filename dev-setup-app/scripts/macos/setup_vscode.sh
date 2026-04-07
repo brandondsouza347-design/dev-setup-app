@@ -28,7 +28,7 @@ if [ -z "$CODE_CMD" ]; then
 fi
 
 echo "✓ VS Code CLI found: $CODE_CMD"
-$CODE_CMD --version | head -1
+"$CODE_CMD" --version | head -1
 
 # ─── 2. Install extensions ──────────────────────────────────────────────────
 
@@ -59,7 +59,7 @@ FAILED=0
 
 for ext in "${EXTENSIONS[@]}"; do
     echo "   Installing: $ext"
-    if $CODE_CMD --install-extension "$ext" --force 2>&1 | grep -qi "successfully installed\|already installed"; then
+    if "$CODE_CMD" --install-extension "$ext" --force 2>&1 | grep -qi "successfully installed\|already installed"; then
         echo "   ✓ $ext"
         ((INSTALLED++)) || true
     else
