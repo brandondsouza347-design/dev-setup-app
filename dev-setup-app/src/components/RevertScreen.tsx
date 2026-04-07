@@ -1,6 +1,7 @@
 // components/RevertScreen.tsx — Safely revert the Windows WSL environment to clean state
 import { useState, useRef, useEffect } from 'react';
-import { AlertTriangle, RotateCcw, ChevronDown, ChevronRight, CheckCircle, XCircle, Loader, Circle, ShieldAlert, ScrollText, Trash2 } from 'lucide-react';
+import { AlertTriangle, RotateCcw, ChevronDown, ChevronRight, CheckCircle, XCircle, Loader, Circle, ShieldAlert, ScrollText, Trash2, FolderOpen } from 'lucide-react';
+import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import type { OsInfo, SetupStep, StepResult, LogEntry, UserConfig } from '../types';
 
 interface Props {
@@ -11,10 +12,11 @@ interface Props {
   isReverting: boolean;
   revertComplete: boolean;
   config: UserConfig;
-  onUpdateConfig: (key: keyof UserConfig, value: string | boolean) => void;
+  onUpdateConfig: (key: keyof UserConfig, value: string | boolean | null) => void;
   onStartRevert: () => Promise<void>;
   onRetryStep: (id: string) => Promise<void>;
   onReset: () => void;
+  onStop: () => Promise<void>;
   onClearLogs: () => void;
 }
 
@@ -30,12 +32,24 @@ export const RevertScreen: React.FC<Props> = ({
   onStartRevert,
   onRetryStep,
   onReset,
+  onStop,
   onClearLogs,
 }) => {
   const [confirmed, setConfirmed] = useState(false);
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
   const [logsOpen, setLogsOpen] = useState(true);
   const logsEndRef = useRef<HTMLDivElement>(null);
+
+  // Browse for backup directory
+  const browseBackupLocation = async () => {
+    const selected = await openDialog({
+      title: 'Select WSL Backup Location',
+      directory: true,
+    });
+    if (typeof selected === 'string') {
+      onUpdateConfig('wsl_backup_path', selected);
+    }
+  };
 
   // Auto-scroll logs to bottom when new entries arrive
   useEffect(() => {
@@ -106,10 +120,13 @@ export const RevertScreen: React.FC<Props> = ({
         )}
         <div className="flex gap-3 mt-8">
           <button
-            onClick={onReset}
-            className="px-5 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg text-sm transition-colors"
+            onClick={async () => {
+              onReset();
+              await onStartRevert();
+            }}
+            className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors font-medium"
           >
-            Start Over
+            Restart Revert
           </button>
         </div>
         {/* Step summary */}
@@ -145,19 +162,44 @@ export const RevertScreen: React.FC<Props> = ({
       <div className="h-full flex flex-col overflow-hidden">
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-amber-50 dark:bg-amber-900/20">
-          <div className="flex items-center gap-3">
-            <RotateCcw className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-            <div>
-              <h2 className="font-semibold text-gray-900 dark:text-white">
-                Reverting WSL Environment
-              </h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                {isReverting
-                  ? `Step ${doneCount + 1} of ${revertSteps.length} running…`
-                  : failedStep
-                  ? `Stopped — step failed: ${failedStep.title}`
-                  : `${doneCount} / ${revertSteps.length} complete`}
-              </p>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <RotateCcw className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+              <div>
+                <h2 className="font-semibold text-gray-900 dark:text-white">
+                  Reverting WSL Environment
+                </h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  {isReverting
+                    ? `Step ${doneCount + 1} of ${revertSteps.length} running…`
+                    : failedStep
+                    ? `Stopped — step failed: ${failedStep.title}`
+                    : `${doneCount} / ${revertSteps.length} complete`}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {isReverting && (
+                <button
+                  onClick={onStop}
+                  className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors text-sm font-medium"
+                >
+                  <XCircle className="w-4 h-4" />
+                  Stop Revert
+                </button>
+              )}
+              {!isReverting && !revertComplete && (
+                <button
+                  onClick={async () => {
+                    onReset();
+                    await onStartRevert();
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm font-medium"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  Restart Revert
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -254,27 +296,61 @@ export const RevertScreen: React.FC<Props> = ({
 
         {/* Backup option / guarantee callout */}
         {!config.skip_wsl_backup ? (
-          <div className="flex gap-4 p-5 bg-amber-50 dark:bg-amber-900/20 border-2 border-amber-400 dark:border-amber-600 rounded-xl mb-8">
-            <ShieldAlert className="w-6 h-6 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-            <div className="text-sm">
-              <p className="font-bold text-amber-800 dark:text-amber-300 mb-1">
-                Backup is mandatory — deletion is blocked until it succeeds
-              </p>
-              <p className="text-amber-700 dark:text-amber-400 mb-2">
-                Before any data is removed, the ERC distro is exported to{' '}
-                <code className="bg-amber-100 dark:bg-amber-800 px-1 rounded">%USERPROFILE%\WSL_Backup\</code>.
-                The script verifies the file exists on disk and is a valid non-empty TAR.
-                If the backup cannot be confirmed, <strong>the revert stops immediately</strong> and
-                nothing is deleted.
-              </p>
-              <p className="text-amber-700 dark:text-amber-400">
-                To restore after revert:{' '}
-                <code className="text-xs bg-amber-100 dark:bg-amber-800 px-1.5 py-0.5 rounded block mt-1">
-                  wsl --import ERC &lt;install-dir&gt; %USERPROFILE%\WSL_Backup\erc_backup_*.tar --version 2
-                </code>
+          <>
+            {/* Backup Location Selector */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Backup Location
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={config.wsl_backup_path ?? ''}
+                  onChange={(e) => onUpdateConfig('wsl_backup_path', e.target.value || null)}
+                  disabled={hasStarted}
+                  className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:cursor-not-allowed"
+                  placeholder="Default: %USERPROFILE%\\WSL_Backup"
+                />
+                <button
+                  onClick={browseBackupLocation}
+                  disabled={hasStarted}
+                  className="flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <FolderOpen className="w-4 h-4" />
+                  Browse
+                </button>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                {config.wsl_backup_path 
+                  ? `Backup will be saved to: ${config.wsl_backup_path}\\erc_backup_*.tar`
+                  : 'If not specified, backup will be saved to %USERPROFILE%\\WSL_Backup\\erc_backup_*.tar'}
               </p>
             </div>
-          </div>
+
+            <div className="flex gap-4 p-5 bg-amber-50 dark:bg-amber-900/20 border-2 border-amber-400 dark:border-amber-600 rounded-xl mb-8">
+              <ShieldAlert className="w-6 h-6 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              <div className="text-sm">
+                <p className="font-bold text-amber-800 dark:text-amber-300 mb-1">
+                  Backup is mandatory — deletion is blocked until it succeeds
+                </p>
+                <p className="text-amber-700 dark:text-amber-400 mb-2">
+                  Before any data is removed, the ERC distro is exported to{' '}
+                  <code className="bg-amber-100 dark:bg-amber-800 px-1 rounded">
+                    {config.wsl_backup_path || '%USERPROFILE%\\WSL_Backup'}
+                  </code>.
+                  The script verifies the file exists on disk and is a valid non-empty TAR.
+                  If the backup cannot be confirmed, <strong>the revert stops immediately</strong> and
+                  nothing is deleted.
+                </p>
+                <p className="text-amber-700 dark:text-amber-400">
+                  To restore after revert:{' '}
+                  <code className="text-xs bg-amber-100 dark:bg-amber-800 px-1.5 py-0.5 rounded block mt-1">
+                    wsl --import ERC &lt;install-dir&gt; {config.wsl_backup_path || '%USERPROFILE%\\WSL_Backup'}\\erc_backup_*.tar --version 2
+                  </code>
+                </p>
+              </div>
+            </div>
+          </>
         ) : (
           <div className="flex gap-4 p-5 bg-red-50 dark:bg-red-900/20 border-2 border-red-400 dark:border-red-600 rounded-xl mb-8">
             <AlertTriangle className="w-6 h-6 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />

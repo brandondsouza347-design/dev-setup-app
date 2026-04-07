@@ -315,6 +315,9 @@ pub async fn execute_via_agent(
 
     #[cfg(target_os = "windows")]
     {
+        // Log step start immediately so users see which step failed if agent isn't ready
+        emit_log(window, &step.id, &format!("▶ Starting (via admin agent): {}", step.title), LogLevel::Info);
+
         if !state.is_ready() {
             return Err("Admin steps require elevation. Click 'Enable Admin Steps' first.".to_string());
         }
@@ -367,8 +370,6 @@ pub async fn execute_via_agent(
         });
         std::fs::write(&cmd_file, serde_json::to_string(&cmd).unwrap().as_bytes())
             .map_err(|e| format!("Failed to write command file: {}", e))?;
-
-        emit_log(window, &step_id, &format!("\u{25b6} Starting (via admin agent): {}", step.title), LogLevel::Info);
 
         // Poll: stream log_*.txt incrementally, stop when done_*.json appears
         let max_secs: u64 = 600;

@@ -46,6 +46,8 @@ impl StepState {
 pub struct UserConfig {
     pub wsl_tar_path: Option<String>,
     pub wsl_install_dir: Option<String>,
+    #[serde(default)]
+    pub wsl_backup_path: Option<String>,
     pub postgres_password: String,
     pub postgres_db_name: String,
     pub python_version: String,
@@ -82,6 +84,7 @@ impl Default for UserConfig {
         UserConfig {
             wsl_tar_path: None,
             wsl_install_dir: None,
+            wsl_backup_path: None,
             postgres_password: "postgres".to_string(),
             postgres_db_name: "toogo_pos".to_string(),
             python_version: "3.9.21".to_string(),

@@ -59,6 +59,7 @@ pub struct ConfigInput {
     pub cluster_name: String,
     pub aws_access_key_id: Option<String>,
     pub aws_secret_access_key: Option<String>,
+    pub wsl_backup_path: Option<String>,
 }
 
 /// Detects the current operating system.
@@ -1185,6 +1186,7 @@ pub fn save_config(
         },
         aws_access_key_id: input.aws_access_key_id.filter(|s| !s.trim().is_empty()),
         aws_secret_access_key: input.aws_secret_access_key.filter(|s| !s.trim().is_empty()),
+        wsl_backup_path: input.wsl_backup_path,
     };
     Ok(())
 }

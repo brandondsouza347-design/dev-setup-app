@@ -1030,6 +1030,9 @@ fn build_env(config: &UserConfig) -> Vec<(String, String)> {
     if let Some(ref install_dir) = config.wsl_install_dir {
         env.push(("SETUP_WSL_INSTALL_DIR".to_string(), install_dir.clone()));
     }
+    if let Some(ref backup_path) = config.wsl_backup_path {
+        env.push(("SETUP_WSL_BACKUP_PATH".to_string(), backup_path.clone()));
+    }
     if let Some(ref openvpn_path) = config.openvpn_config_path {
         env.push(("SETUP_OPENVPN_CONFIG_PATH".to_string(), openvpn_path.clone()));
     }

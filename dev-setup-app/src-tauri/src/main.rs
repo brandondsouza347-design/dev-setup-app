@@ -8,6 +8,7 @@ mod state;
 
 use state::{AppState, CancelState};
 use std::sync::Mutex;
+use tauri::Manager;
 
 fn main() {
     tauri::Builder::default()
@@ -74,6 +75,31 @@ fn main() {
                 window.open_devtools();
             }
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                log::info!("Window close requested - cleaning up resources...");
+                
+                // Cancel any running operations
+                if let Some(cancel_state) = window.app_handle().try_state::<CancelState>() {
+                    cancel_state.cancel();
+                    log::info!("Cancelled running operations");
+                }
+                
+                // Shutdown admin agent if running
+                if let Some(agent_state) = window.app_handle().try_state::<admin_agent::AdminAgentState>() {
+                    if agent_state.is_ready() {
+                        log::info!("Shutting down admin agent...");
+                        let runtime = tokio::runtime::Runtime::new().unwrap();
+                        runtime.block_on(async {
+                            admin_agent::shutdown_agent(&agent_state).await;
+                        });
+                        log::info!("Admin agent shutdown complete");
+                    }
+                }
+                
+                log::info!("Cleanup complete - allowing window to close");
+            }
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

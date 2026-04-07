@@ -8,6 +8,7 @@
 #Requires -RunAsAdministrator
 $ErrorActionPreference = "Stop"
 $DistroName = "ERC"
+$TenantName = if ($env:SETUP_TENANT_NAME) { $env:SETUP_TENANT_NAME } else { "erckinetic" }
 
 # Helper: write bash snippet to a temp LF-only file and execute via WSL.
 function Invoke-WslBash {
@@ -59,7 +60,7 @@ fi
     Write-Host "`n==> Step 4: Removing dev hostnames from WSL /etc/hosts..."
     Invoke-WslBash @"
 if [ -f /etc/hosts ]; then
-    sudo sed -i '/erckinetic/d' /etc/hosts 2>/dev/null || true
+    sudo sed -i '/$TenantName/d' /etc/hosts 2>/dev/null || true
     sudo sed -i '/Dev hostnames/d' /etc/hosts 2>/dev/null || true
     echo 'Step 4 complete - dev hostnames removed from WSL /etc/hosts'
 else
@@ -73,30 +74,74 @@ fi
 Write-Host "`n==> Step 5: Removing dev hostnames from Windows hosts file..."
 $hostsFile = "C:\Windows\System32\drivers\etc\hosts"
 if (Test-Path $hostsFile) {
-    $removePatterns = @("erckinetic", "erckinetic\.local", "localhost\.erckinetic", "# Dev hostnames \(added by setup tool\)")
+    # Use dynamic tenant name from environment
+    $escapedTenant = [regex]::Escape($TenantName)
+    $removePatterns = @(
+        $escapedTenant,
+        "$escapedTenant\.local",
+        "localhost\.$escapedTenant",
+        "# Dev hostnames \(added by setup tool\)"
+    )
+    
     $originalLines = Get-Content $hostsFile
-    $keptLines = $originalLines | Where-Object {
-        $line = $_
-        -not ($removePatterns | Where-Object { $line -match $_ })
-    }
-    $removedCount = $originalLines.Count - @($keptLines).Count
-    if ($removedCount -gt 0) {
-        $maxRetries = 5; $retryDelay = 3; $attempt = 0; $written = $false
-        while (-not $written -and $attempt -lt $maxRetries) {
-            try {
-                Set-Content -Path $hostsFile -Value $keptLines -Encoding ASCII -ErrorAction Stop
-                $written = $true
-            } catch {
-                $attempt++
-                if ($attempt -lt $maxRetries) {
-                    Write-Host "   Hosts file busy, retrying in ${retryDelay}s... ($attempt/$maxRetries)" -ForegroundColor Yellow
-                    Start-Sleep -Seconds $retryDelay
-                } else { throw }
-            }
-        }
-        Write-Host "   ✓ Step 5 complete — removed $removedCount dev entry/entries from Windows hosts file" -ForegroundColor Green
+    
+    # Validate we actually read content
+    if ($null -eq $originalLines -or $originalLines.Count -eq 0) {
+        Write-Host "   ⚠ Hosts file appears empty or unreadable — skipping to avoid data loss" -ForegroundColor Yellow
     } else {
-        Write-Host "   ✓ Step 5 complete — no dev entries found in Windows hosts file, already clean" -ForegroundColor Green
+        $keptLines = $originalLines | Where-Object {
+            $line = $_
+            -not ($removePatterns | Where-Object { $line -match $_ })
+        }
+        
+        # Safety check: ensure we're not about to delete everything
+        $removedCount = $originalLines.Count - @($keptLines).Count
+        
+        if ($removedCount -eq $originalLines.Count) {
+            Write-Host "   ⚠ WARNING: All lines would be removed! Skipping to prevent data loss" -ForegroundColor Red
+            Write-Host "   Original line count: $($originalLines.Count)" -ForegroundColor Yellow
+            Write-Host "   This may indicate a pattern matching error. Please review manually." -ForegroundColor Yellow
+        } elseif ($removedCount -gt 0) {
+            # Create backup before modifying
+            $backupPath = "$hostsFile.backup_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
+            try {
+                Copy-Item $hostsFile $backupPath -Force
+                Write-Host "   Created backup: $backupPath" -ForegroundColor Gray
+            } catch {
+                Write-Host "   ⚠ Could not create backup, proceeding anyway..." -ForegroundColor Yellow
+            }
+            
+            $maxRetries = 5; $retryDelay = 3; $attempt = 0; $written = $false
+            while (-not $written -and $attempt -lt $maxRetries) {
+                try {
+                    # Close any potential file handles before writing
+                    [System.GC]::Collect()
+                    [System.GC]::WaitForPendingFinalizers()
+                    
+                    # Use Set-Content with explicit newline handling to preserve format
+                    $keptLines -join "`r`n" | Set-Content -Path $hostsFile -Encoding ASCII -NoNewline -Force -ErrorAction Stop
+                    $written = $true
+                } catch {
+                    $attempt++
+                    if ($attempt -lt $maxRetries) {
+                        Write-Host "   Hosts file busy, retrying in ${retryDelay}s... ($attempt/$maxRetries)" -ForegroundColor Yellow
+                        Start-Sleep -Seconds $retryDelay
+                    } else { 
+                        Write-Host "   ⚠ Failed to update hosts file after $maxRetries attempts - file may be locked" -ForegroundColor Yellow
+                        Write-Host "   Note: $removedCount dev entries should be removed manually from: $hostsFile" -ForegroundColor Yellow
+                        if (Test-Path $backupPath) {
+                            Write-Host "   Backup available at: $backupPath" -ForegroundColor Yellow
+                        }
+                        # Don't throw - continue with revert
+                    }
+                }
+            }
+            if ($written) {
+                Write-Host "   ✓ Step 5 complete — removed $removedCount dev entry/entries from Windows hosts file" -ForegroundColor Green
+            }
+        } else {
+            Write-Host "   ✓ Step 5 complete — no dev entries found in Windows hosts file, already clean" -ForegroundColor Green
+        }
     }
 } else {
     Write-Host "   ⚠ Windows hosts file not found — skipping" -ForegroundColor Yellow
@@ -115,7 +160,7 @@ if (Test-Path $wslConfigPath) {
     }
     $newContent = ($newLines -join "`n").Trim()
     # Remove empty [wsl2] header
-    $newContent = $newContent -replace "(?m)^\[wsl2\]\s*$(\r?\n)*(?=\[|\z)", ""
+    $newContent = $newContent -replace '(?m)^\[wsl2\]\s*$(\r?\n)*(?=\[|\z)', ''
     $newContent = $newContent.Trim()
     if ([string]::IsNullOrWhiteSpace($newContent)) {
         Remove-Item $wslConfigPath -Force

@@ -50,7 +50,7 @@ interface UseSetupReturn {
   runPrereqCheck: () => Promise<void>;
   handlePrereqAction: (actionId: string) => Promise<void>;
   saveConfig: (cfg: UserConfig) => Promise<void>;
-  updateConfig: (key: keyof UserConfig, value: string | boolean) => void;
+  updateConfig: (key: keyof UserConfig, value: string | boolean | null) => void;
   startSetup: () => Promise<void>;
   stopSetup: () => Promise<void>;
   resumeSetup: () => Promise<void>;
@@ -103,6 +103,7 @@ export function useSetup(): UseSetupReturn {
     cluster_name: 'stable',
     aws_access_key_id: null,
     aws_secret_access_key: null,
+    wsl_backup_path: null,
   });
   const [prereqChecks, setPrereqChecks] = useState<PrereqCheck[]>([]);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
@@ -334,7 +335,7 @@ export function useSetup(): UseSetupReturn {
     setConfig(cfg);
   }, []);
 
-  const updateConfig = useCallback((key: keyof UserConfig, value: string | boolean) => {
+  const updateConfig = useCallback((key: keyof UserConfig, value: string | boolean | null) => {
     setConfig((prev) => ({ ...prev, [key]: value }));
   }, []);
 
@@ -425,6 +426,13 @@ export function useSetup(): UseSetupReturn {
   }, []);
 
   const startRevert = useCallback(async () => {
+    // Save current config first to ensure skip_wsl_backup and other settings are persisted
+    try {
+      await invoke('save_config', { input: config });
+    } catch (e) {
+      console.error('Failed to save config before revert:', e);
+    }
+    
     setIsReverting(true);
     setRevertComplete(false);
     setRevertResults({});
@@ -434,7 +442,7 @@ export function useSetup(): UseSetupReturn {
       console.error('Revert error:', e);
       setIsReverting(false);
     }
-  }, []);
+  }, [config]);
 
   const retryRevertStep = useCallback(async (id: string) => {
     setIsReverting(true);

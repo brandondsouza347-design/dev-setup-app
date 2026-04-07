@@ -137,6 +137,7 @@ function App() {
               onStartRevert={setup.startRevert}
               onRetryStep={setup.retryRevertStep}
               onReset={setup.resetRevert}
+              onStop={setup.stopSetup}
               onClearLogs={setup.clearLogs}
             />
           </div>

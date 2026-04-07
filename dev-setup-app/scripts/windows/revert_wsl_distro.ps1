@@ -5,7 +5,7 @@
 $ErrorActionPreference = "Stop"
 
 $DistroName  = "ERC"
-$BackupDir   = Join-Path $env:USERPROFILE "WSL_Backup"
+$BackupDir   = if ($env:SETUP_WSL_BACKUP_PATH) { $env:SETUP_WSL_BACKUP_PATH } else { Join-Path $env:USERPROFILE "WSL_Backup" }
 $InstallDirs = @(
     (Join-Path $env:USERPROFILE "WSL\ERC"),
     (Join-Path $env:USERPROFILE "WSL\Ubuntu-22.04"),
@@ -46,9 +46,60 @@ if ($SkipBackup) {
     New-Item -ItemType Directory -Path $BackupDir -Force | Out-Null
     $BackupFile = Join-Path $BackupDir "erc_backup_$(Get-Date -Format 'yyyyMMdd_HHmmss').tar"
     Write-Host "   Backup destination: $BackupFile"
+    Write-Host ""
+    Write-Host "   Starting export... (this may take 5-15 minutes depending on distro size)" -ForegroundColor Cyan
+    Write-Host "   The process is working even when there's no new output — please wait" -ForegroundColor Cyan
+    Write-Host ""
 
     try {
-        wsl --export $DistroName $BackupFile
+        # Start wsl --export as a background job so we can show progress
+        $exportJob = Start-Job -ScriptBlock {
+            param($distro, $file)
+            wsl --export $distro $file
+        } -ArgumentList $DistroName, $BackupFile
+
+        $startTime = Get-Date
+        $lastSize = 0
+        $noGrowthCount = 0
+        $maxNoGrowthCycles = 6  # 3 minutes of no growth = stall warning
+
+        # Monitor the job and show progress indicators every 30 seconds
+        while ($exportJob.State -eq 'Running') {
+            Start-Sleep -Seconds 30
+            $elapsed = [Math]::Round(((Get-Date) - $startTime).TotalSeconds)
+
+            # Check if backup file exists and is growing
+            if (Test-Path $BackupFile) {
+                $currentSize = (Get-Item $BackupFile).Length
+                $sizeMB = [Math]::Round($currentSize / 1MB, 1)
+                $growthMB = [Math]::Round(($currentSize - $lastSize) / 1MB, 1)
+                
+                if ($currentSize -gt $lastSize) {
+                    Write-Host "   ⏳ Exporting... ${elapsed}s elapsed | ${sizeMB} MB written | +${growthMB} MB last 30s" -ForegroundColor Cyan
+                    $noGrowthCount = 0
+                } else {
+                    # No growth detected
+                    $noGrowthCount++
+                    if ($noGrowthCount -ge $maxNoGrowthCycles) {
+                        Write-Host "   ⚠ Export appears stalled (no growth for 3 minutes at ${sizeMB} MB)" -ForegroundColor Yellow
+                        Write-Host "   This may indicate a hung WSL process or disk I/O issue" -ForegroundColor Yellow
+                        Write-Host "   Waiting for job to complete or timeout..." -ForegroundColor Yellow
+                    } else {
+                        Write-Host "   ⏳ Exporting... ${elapsed}s elapsed | ${sizeMB} MB written | finalizing..." -ForegroundColor Cyan
+                    }
+                }
+                $lastSize = $currentSize
+            } else {
+                Write-Host "   ⏳ Initializing export... ${elapsed}s elapsed" -ForegroundColor Cyan
+            }
+        }
+
+        # Wait for job to complete and get any output/errors
+        $jobResult = Receive-Job -Job $exportJob -Wait -ErrorAction Stop
+        Remove-Job -Job $exportJob
+
+        $totalElapsed = [Math]::Round(((Get-Date) - $startTime).TotalSeconds)
+        Write-Host "   ✓ Export completed in ${totalElapsed}s" -ForegroundColor Green
     } catch {
         Write-Host ""
         Write-Host "ERROR: wsl --export threw an exception: $_" -ForegroundColor Red

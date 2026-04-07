@@ -47,6 +47,7 @@ export interface StepResult {
 export interface UserConfig {
   wsl_tar_path: string | null;
   wsl_install_dir: string | null;
+  wsl_backup_path: string | null;
   postgres_password: string;
   postgres_db_name: string;
   python_version: string;
