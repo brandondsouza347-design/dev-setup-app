@@ -229,6 +229,9 @@ export function useSetup(): UseSetupReturn {
             return { ...prev, [id]: { ...existing, status, error: error ?? null } };
           });
           if (status === 'running') {
+            // Ensure isRunning is true when any step starts running
+            // This handles cases where state might have been reset between startSetup() and step execution
+            setIsRunning(true);
             const idx = steps.findIndex((s) => s.id === id);
             if (idx >= 0) setCurrentStepIndex(idx);
           }
@@ -432,7 +435,7 @@ export function useSetup(): UseSetupReturn {
     } catch (e) {
       console.error('Failed to save config before revert:', e);
     }
-    
+
     setIsReverting(true);
     setRevertComplete(false);
     setRevertResults({});

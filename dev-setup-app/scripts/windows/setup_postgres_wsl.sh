@@ -205,7 +205,15 @@ fi
 
 # ─── Verify ──────────────────────────────────────────────────────────────────
 echo "==> Step 5: Verification..."
-timeout 10s sudo -u postgres psql -c "\l" 2>/dev/null | grep "$PG_DB" && echo "✓ Database visible in PostgreSQL" || echo "  Note: Database listing timed out or unavailable"
+# Run verification in a way that won't block if psql hangs
+VERIFY_OUTPUT=$(timeout 5s sudo -u postgres psql -c "\l" 2>&1 || echo "TIMEOUT")
+if echo "$VERIFY_OUTPUT" | grep -q "$PG_DB"; then
+    echo "✓ Database '$PG_DB' visible in PostgreSQL"
+elif echo "$VERIFY_OUTPUT" | grep -q "TIMEOUT"; then
+    echo "  Note: Database listing timed out (but PostgreSQL is running)"
+else
+    echo "  Note: Could not verify database (but PostgreSQL is running)"
+fi
 echo ""
 echo "✓ PostgreSQL setup complete"
 echo "  Version : $(psql --version)"

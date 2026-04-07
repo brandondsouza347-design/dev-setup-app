@@ -114,10 +114,30 @@ try {
 }
 
 if ($rebootRequired) {
-    Write-Host "`n⚠  RESTART REQUIRED" -ForegroundColor Yellow
-    Write-Host "   WSL2 features were just enabled and require a system restart to take effect." -ForegroundColor Yellow
-    Write-Host "   Please save your work, restart your PC, then re-run this installer." -ForegroundColor Yellow
-    Write-Host "   This step will be detected as already complete on the next run." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host ""
+    Write-Host "╔═══════════════════════════════════════════════════════════════════════════════╗" -ForegroundColor Red
+    Write-Host "║                                                                               ║" -ForegroundColor Red
+    Write-Host "║                    ⚠  RESTART WINDOWS REQUIRED  ⚠                            ║" -ForegroundColor Red -BackgroundColor DarkRed
+    Write-Host "║                                                                               ║" -ForegroundColor Red
+    Write-Host "╠═══════════════════════════════════════════════════════════════════════════════╣" -ForegroundColor Red
+    Write-Host "║                                                                               ║" -ForegroundColor Red
+    Write-Host "║  WSL2 features have been enabled for the FIRST TIME on this computer.        ║" -ForegroundColor Yellow
+    Write-Host "║                                                                               ║" -ForegroundColor Red
+    Write-Host "║  Windows MUST be restarted before WSL2 can be used.                          ║" -ForegroundColor Yellow
+    Write-Host "║                                                                               ║" -ForegroundColor Red
+    Write-Host "║  NEXT STEPS:                                                                  ║" -ForegroundColor Cyan
+    Write-Host "║    1. Save all your work                                                      ║" -ForegroundColor White
+    Write-Host "║    2. Restart your computer (Start → Power → Restart)                        ║" -ForegroundColor White
+    Write-Host "║    3. After restart, re-run this Dev Setup application                       ║" -ForegroundColor White
+    Write-Host "║    4. WSL2 will be detected as already enabled - setup will continue          ║" -ForegroundColor White
+    Write-Host "║                                                                               ║" -ForegroundColor Red
+    Write-Host "╚═══════════════════════════════════════════════════════════════════════════════╝" -ForegroundColor Red
+    Write-Host ""
+    Write-Host ""
+    Write-Host "⛔ SETUP PAUSED - RESTART REQUIRED ⛔" -ForegroundColor White -BackgroundColor Red
+    Write-Host ""
+    Write-Host ""
     exit 1
 } else {
     Write-Host "`n✓ WSL2 features already enabled — no restart needed" -ForegroundColor Green

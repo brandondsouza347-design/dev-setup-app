@@ -76,9 +76,21 @@ Write-Host "✓ TAR file found: $([Math]::Round($TarSize, 2)) GB"
 Write-Host "`n==> Step 2: Checking for existing distro..."
 $existingDistros = (wsl --list --quiet 2>$null) -replace '\0','' | Where-Object { $_ -match $DistroName }
 if ($existingDistros) {
-    Write-Host "✓ $DistroName is already registered in WSL"
-    Write-Host "   Skipping import. Use 'wsl -d $DistroName' to access it."
-    exit 0
+    Write-Host "   $DistroName is registered in WSL" -ForegroundColor Yellow
+
+    # Verify the disk file actually exists
+    $diskPath = Join-Path $InstallDir "ext4.vhdx"
+    if (Test-Path $diskPath) {
+        $diskSizeGB = [Math]::Round((Get-Item $diskPath).Length / 1GB, 2)
+        Write-Host "✓ Disk file verified: $diskPath ($diskSizeGB GB)" -ForegroundColor Green
+        Write-Host "   Skipping import. Use 'wsl -d $DistroName' to access it."
+        exit 0
+    } else {
+        Write-Host "   ⚠ WARNING: Registration exists but disk file not found at: $diskPath" -ForegroundColor Yellow
+        Write-Host "   This indicates a broken installation. Unregistering and proceeding with fresh import..." -ForegroundColor Yellow
+        wsl --unregister $DistroName 2>&1 | ForEach-Object { Write-Host "     $_" }
+        Write-Host "   ✓ Unregistered broken distro, will proceed with import" -ForegroundColor Green
+    }
 }
 Write-Host "   Distro not yet imported, proceeding..."
 
@@ -141,6 +153,17 @@ try {
 
 Write-Host "`n   wsl --list --verbose after import:"
 wsl --list --verbose 2>&1 | ForEach-Object { Write-Host "     $_" }
+
+# Verify ext4.vhdx was created
+$ext4Path = Join-Path $InstallDir "ext4.vhdx"
+Write-Host "`n   Verifying disk file creation:"
+if (Test-Path $ext4Path) {
+    $diskSize = [Math]::Round((Get-Item $ext4Path).Length / 1GB, 2)
+    Write-Host "   ✓ Disk file created: $ext4Path ($diskSize GB)" -ForegroundColor Green
+} else {
+    Write-Host "   ⚠ WARNING: ext4.vhdx not found at $ext4Path" -ForegroundColor Yellow
+    Write-Host "   Import may have failed silently or disk is in unexpected location" -ForegroundColor Yellow
+}
 
 if ($importExitCode -ne 0) {
     Write-Host "ERROR: wsl --import failed with exit code $importExitCode" -ForegroundColor Red

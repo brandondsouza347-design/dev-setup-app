@@ -105,7 +105,7 @@ if [ -n "$TRACKER_SCRIPT" ]; then
     COPY_PID=$!
 
     echo "🔄 Copy tenant process started (PID: $COPY_PID)"
-    echo "🕒 Progress updates every 10 minutes..."
+    echo "🕒 Progress updates every 60 seconds..."
     echo ""
 
     # Monitor with progress file reading
@@ -114,8 +114,8 @@ if [ -n "$TRACKER_SCRIPT" ]; then
         current_time=$(date +%s)
         minutes_elapsed=$(( (current_time - start_time) / 60 ))
 
-        # Log progress every 10 minutes
-        if [ $(( (current_time - last_log_time) )) -ge 600 ]; then
+        # Log progress every 60 seconds
+        if [ $(( (current_time - last_log_time) )) -ge 60 ]; then
             # Try to read progress file
             if [ -f /tmp/copy_tenant_progress.json ]; then
                 phase=$(python -c "import json; print(json.load(open('/tmp/copy_tenant_progress.json')).get('phase', 'unknown'))" 2>/dev/null || echo "copying")
@@ -147,7 +147,7 @@ else
     set +x
 
     echo "🔄 Copy tenant process started (PID: $COPY_PID)"
-    echo "🕒 Progress updates every 10 minutes..."
+    echo "🕒 Progress updates every 60 seconds..."
     echo ""
 
     while kill -0 $COPY_PID 2>/dev/null; do
@@ -155,7 +155,7 @@ else
         current_time=$(date +%s)
         minutes_elapsed=$(( (current_time - start_time) / 60 ))
 
-        if [ $(( (current_time - last_log_time) )) -ge 600 ]; then
+        if [ $(( (current_time - last_log_time) )) -ge 60 ]; then
             echo ""
             echo "⏳ [$minutes_elapsed min elapsed] Copy tenant in progress..."
             echo "   ✅ Connection active - downloading tenant data from cluster"

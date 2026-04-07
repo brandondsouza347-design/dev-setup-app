@@ -83,7 +83,10 @@ export const SettingsScreen: React.FC<Props> = ({ config, osInfo, onUpdate, onSa
     if (!name || name.trim().length === 0) return;
 
     try {
-      await invoke('save_config_profile', { profileName: name.trim(), state: {} });
+      // First save the current config to backend state
+      await onSave(config);
+      // Then save it as a named profile (backend will read from its state)
+      await invoke('save_config_profile', { profileName: name.trim() });
       await loadProfiles();
     } catch (err) {
       alert(`Failed to save profile: ${err}`);
@@ -93,9 +96,11 @@ export const SettingsScreen: React.FC<Props> = ({ config, osInfo, onUpdate, onSa
   const handleLoadProfile = async (profileName: string) => {
     try {
       const loadedConfig = await invoke<UserConfig>('load_config_profile', { profileName });
-      // Apply the loaded config directly
-      await onSave(loadedConfig);
-      setSaved(true);
+      // Update each field individually to trigger form updates
+      Object.entries(loadedConfig).forEach(([key, value]) => {
+        onUpdate(key as keyof UserConfig, value as string);
+      });
+      setSaved(false); // Mark as unsaved so user can see the changes
     } catch (err) {
       alert(`Failed to load profile: ${err}`);
     }

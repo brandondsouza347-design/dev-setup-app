@@ -6,11 +6,22 @@ $ErrorActionPreference = "Stop"
 
 $DistroName  = "ERC"
 $BackupDir   = if ($env:SETUP_WSL_BACKUP_PATH) { $env:SETUP_WSL_BACKUP_PATH } else { Join-Path $env:USERPROFILE "WSL_Backup" }
+
+# Build list of possible install directories to clean up
 $InstallDirs = @(
     (Join-Path $env:USERPROFILE "WSL\ERC"),
     (Join-Path $env:USERPROFILE "WSL\Ubuntu-22.04"),
     (Join-Path $env:USERPROFILE "WSL\Ubuntu")
 )
+
+# Add the actual install directory from environment variable if it was customized
+if ($env:SETUP_WSL_INSTALL_DIR) {
+    $customDir = $env:SETUP_WSL_INSTALL_DIR
+    if ($customDir -and -not ($InstallDirs -contains $customDir)) {
+        $InstallDirs += $customDir
+        Write-Host "   Added custom install directory from SETUP_WSL_INSTALL_DIR: $customDir" -ForegroundColor Cyan
+    }
+}
 
 $SkipBackup = $env:SETUP_SKIP_WSL_BACKUP -eq 'true'
 
@@ -73,7 +84,7 @@ if ($SkipBackup) {
                 $currentSize = (Get-Item $BackupFile).Length
                 $sizeMB = [Math]::Round($currentSize / 1MB, 1)
                 $growthMB = [Math]::Round(($currentSize - $lastSize) / 1MB, 1)
-                
+
                 if ($currentSize -gt $lastSize) {
                     Write-Host "   ⏳ Exporting... ${elapsed}s elapsed | ${sizeMB} MB written | +${growthMB} MB last 30s" -ForegroundColor Cyan
                     $noGrowthCount = 0
@@ -139,11 +150,34 @@ Write-Host "   ✓ Unregister command completed"
 # ─── 4. Remove leftover install directories ─────────────────────────────────
 
 Write-Host "`n==> Step 4: Cleaning up install directories..."
+
+# Also check for WSL directories in common root locations
+$commonRootDirs = @(
+    "C:\wsl_brandon",
+    "C:\WSL",
+    (Join-Path $env:USERPROFILE "wsl_brandon")
+)
+
+foreach ($rootDir in $commonRootDirs) {
+    $ercSubdir = Join-Path $rootDir "erc"
+    if ((Test-Path $ercSubdir) -and -not ($InstallDirs -contains $ercSubdir)) {
+        Write-Host "   Found additional ERC installation: $ercSubdir" -ForegroundColor Yellow
+        $InstallDirs += $ercSubdir
+    }
+}
+
 foreach ($dir in $InstallDirs) {
     if (Test-Path $dir) {
         Write-Host "   Removing: $dir"
-        Remove-Item -Path $dir -Recurse -Force -ErrorAction SilentlyContinue
-        Write-Host "   ✓ Removed: $dir"
+        try {
+            Remove-Item -Path $dir -Recurse -Force -ErrorAction Stop
+            Write-Host "   ✓ Removed: $dir" -ForegroundColor Green
+        } catch {
+            Write-Host "   ⚠ Failed to remove $dir : $_" -ForegroundColor Yellow
+            Write-Host "   You may need to manually delete this directory" -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "   Skipped (not found): $dir"
     }
 }
 
