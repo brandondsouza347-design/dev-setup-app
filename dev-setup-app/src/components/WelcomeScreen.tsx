@@ -37,6 +37,13 @@ export const WelcomeScreen: React.FC<Props> = ({ osInfo, onNext }) => {
         '🐍 pyenv local Python version set',
         '🖥️ Workspace setup (MCP config + extensions + open VS Code)',
         '⚙️ Python interpreter configuration',
+        '📦 Install pip Requirements',
+        '🗄️ Migrate Shared Schemas',
+        '👥 Copy Tenant Data',
+        '✏️ Update Tenant Name in Database',
+        '📦 Install Frontend Dependencies',
+        '🏗️ Build Front-End Assets',
+        '🚀 Start Gunicorn Server',
       ]
     : [
         '🐧 WSL2 feature enablement',
@@ -57,6 +64,13 @@ export const WelcomeScreen: React.FC<Props> = ({ osInfo, onNext }) => {
         '🐍 pyenv local Python version set',
         '🖥️ Workspace setup (MCP config + extensions + open VS Code)',
         '⚙️ Python interpreter configuration',
+        '📦 Install pip Requirements',
+        '🗄️ Migrate Shared Schemas',
+        '👥 Copy Tenant Data',
+        '✏️ Update Tenant Name in Database',
+        '📦 Install Frontend Dependencies',
+        '🏗️ Build Front-End Assets',
+        '🚀 Start Gunicorn Server',
       ];
 
   return (

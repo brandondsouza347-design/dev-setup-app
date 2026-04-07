@@ -28,10 +28,11 @@ echo "==> Step 1: Installing pyenv..."
 if [ "$SKIP_INSTALLED" = "true" ] && command -v pyenv &>/dev/null; then
     echo "✓ pyenv already installed: $(pyenv --version)"
 elif command -v pyenv &>/dev/null; then
-    echo "→ pyenv already installed but SKIP_INSTALLED=false — reinstalling via Homebrew..."
+    # SKIP_INSTALLED=false but pyenv exists — upgrade it without affecting Python versions
+    echo "→ pyenv exists — upgrading (preserves Python versions)..."
     if command -v brew &>/dev/null; then
-        brew reinstall pyenv
-        echo "✓ pyenv reinstalled"
+        brew upgrade pyenv 2>/dev/null || brew install pyenv
+        echo "✓ pyenv upgraded"
     else
         echo "  Warning: Homebrew not available, keeping existing pyenv installation"
     fi
@@ -70,15 +71,18 @@ echo "==> Step 3: Installing pyenv-virtualenv..."
 if [ "$SKIP_INSTALLED" = "true" ] && pyenv commands 2>/dev/null | grep -q "virtualenv"; then
     echo "✓ pyenv-virtualenv already available — skipping"
 elif pyenv commands 2>/dev/null | grep -q "virtualenv"; then
-    echo "→ pyenv-virtualenv already installed but SKIP_INSTALLED=false — reinstalling..."
+    echo "→ pyenv-virtualenv exists — upgrading..."
     if command -v brew &>/dev/null; then
-        brew reinstall pyenv-virtualenv
-        echo "✓ pyenv-virtualenv reinstalled"
+        brew upgrade pyenv-virtualenv 2>/dev/null || brew install pyenv-virtualenv
+        echo "✓ pyenv-virtualenv upgraded"
     else
-        rm -rf "$HOME/.pyenv/plugins/pyenv-virtualenv"
-        git clone https://github.com/pyenv/pyenv-virtualenv.git \
-            "$HOME/.pyenv/plugins/pyenv-virtualenv"
-        echo "✓ pyenv-virtualenv reinstalled"
+        # Update the git plugin
+        if [ -d "$HOME/.pyenv/plugins/pyenv-virtualenv/.git" ]; then
+            (cd "$HOME/.pyenv/plugins/pyenv-virtualenv" && git pull --quiet 2>/dev/null || true)
+            echo "✓ pyenv-virtualenv updated"
+        else
+            echo "  Note: pyenv-virtualenv exists but cannot be updated"
+        fi
     fi
 else
     if command -v brew &>/dev/null; then
@@ -108,17 +112,31 @@ export PKG_CONFIG_PATH="$BREW_PREFIX/opt/openssl/lib/pkgconfig:$BREW_PREFIX/opt/
 
 echo "==> Step 5: Installing Python $PYTHON_VERSION via pyenv..."
 
-if [ "$SKIP_INSTALLED" = "true" ] && pyenv versions --bare 2>/dev/null | grep -q "^${PYTHON_VERSION}$"; then
-    echo "✓ Python $PYTHON_VERSION already installed — skipping"
-elif pyenv versions --bare 2>/dev/null | grep -q "^${PYTHON_VERSION}$"; then
-    echo "→ Python $PYTHON_VERSION already installed but SKIP_INSTALLED=false — reinstalling..."
-    echo "   This may take 5–10 minutes (compiling from source)..."
-    pyenv uninstall -f "$PYTHON_VERSION" 2>/dev/null || true
-    pyenv install "$PYTHON_VERSION"
-    echo "✓ Python $PYTHON_VERSION reinstalled"
+# ENHANCED: Check if Python is already fully installed and working at the desired location
+if [ -d "$HOME/.pyenv/versions/$PYTHON_VERSION" ] && \
+   [ -x "$HOME/.pyenv/versions/$PYTHON_VERSION/bin/python" ]; then
+
+    # Verify it's a working Python installation
+    if "$HOME/.pyenv/versions/$PYTHON_VERSION/bin/python" --version 2>&1 | grep -q "$PYTHON_VERSION"; then
+        echo "✓ Python $PYTHON_VERSION already installed and verified at $HOME/.pyenv/versions/$PYTHON_VERSION"
+        echo "  Skipping download to save time and bandwidth"
+
+        # Even if SKIP_INSTALLED=false, don't reinstall if it's working
+        if [ "$SKIP_INSTALLED" = "false" ]; then
+            echo "  (SKIP_INSTALLED=false but installation is valid, no action needed)"
+        fi
+    else
+        echo "⚠ Python $PYTHON_VERSION directory exists but appears broken — reinstalling..."
+        echo "   This may take 5–10 minutes (compiling from source)..."
+        pyenv uninstall -f "$PYTHON_VERSION" 2>/dev/null || true
+        pyenv install -s "$PYTHON_VERSION"
+        echo "✓ Python $PYTHON_VERSION reinstalled"
+    fi
 else
+    # Directory doesn't exist or Python binary missing — install
+    echo "→ Installing Python $PYTHON_VERSION from source..."
     echo "   This may take 5–10 minutes (compiling from source)..."
-    pyenv install "$PYTHON_VERSION"
+    pyenv install -s "$PYTHON_VERSION"
     echo "✓ Python $PYTHON_VERSION installed"
 fi
 

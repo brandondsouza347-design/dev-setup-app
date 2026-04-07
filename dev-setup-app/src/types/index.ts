@@ -62,6 +62,7 @@ export interface UserConfig {
   clone_dir: string | null;
   wsl_default_user: string;
   tenant_name: string;
+  tenant_id: string;
   cluster_name: string;
   aws_access_key_id?: string | null;
   aws_secret_access_key?: string | null;
@@ -114,12 +115,13 @@ export type WizardPage =
   | 'progress'
   | 'complete'
   | 'revert'
-  | 'history';
+  | 'history'
+  | 'workflow';
 
 export type AdminAgentStatus = 'idle' | 'requesting' | 'ready' | 'error';
 
 // Run History types
-export type RunType = 'setup' | 'revert';
+export type RunType = 'setup' | 'revert' | 'workflow';
 export type RunStatus = 'success' | 'failed' | 'cancelled';
 
 export interface FailedStepLog {
@@ -129,12 +131,37 @@ export interface FailedStepLog {
   logs: string[];
 }
 
+export interface SkippedStepLog {
+  step_id: string;
+  step_name: string;
+}
+
 export interface RunHistory {
   id: string;              // UUID/timestamp-based ID
   run_type: RunType;
+  workflow_name?: string;  // Name of custom workflow if run_type='workflow'
   started_at: number;      // Unix timestamp (seconds)
   completed_at: number;    // Unix timestamp (seconds)
   status: RunStatus;
   step_count: number;
   failed_steps: FailedStepLog[];
+  skipped_steps?: SkippedStepLog[];
+}
+
+// Workflow types
+export interface CustomWorkflow {
+  id: string;              // UUID
+  name: string;            // User-friendly workflow name
+  description: string;     // Optional description
+  step_ids: string[];      // Array of step IDs to execute in order
+  created_at: number;      // Unix timestamp (seconds)
+  last_run_at?: number;    // Unix timestamp of last execution
+}
+
+// Configuration Profile types
+export interface ConfigProfile {
+  name: string;             // User-friendly profile name
+  saved_at: number;         // Unix timestamp (seconds)
+  description: string;      // Auto-generated from config values
+  config: UserConfig;       // Saved configuration
 }

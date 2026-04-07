@@ -1,9 +1,9 @@
 // components/SettingsScreen.tsx — Configure installation parameters
-import React, { useState } from 'react';
-import { Save, ChevronLeft, ChevronRight, FolderOpen, AlertTriangle, ExternalLink } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Save, ChevronLeft, ChevronRight, FolderOpen, AlertTriangle, ExternalLink, Bookmark, Trash2, Upload } from 'lucide-react';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
-import type { UserConfig, WizardPage, OsInfo } from '../types';
+import type { UserConfig, WizardPage, OsInfo, ConfigProfile } from '../types';
 
 interface Props {
   config: UserConfig;
@@ -17,8 +17,26 @@ interface Props {
 export const SettingsScreen: React.FC<Props> = ({ config, osInfo, onUpdate, onSave, onNext, onBack }) => {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [profiles, setProfiles] = useState<ConfigProfile[]>([]);
+  const [loadingProfiles, setLoadingProfiles] = useState(true);
 
   const isWindows = osInfo?.os === 'windows';
+
+  // Load profiles on mount
+  useEffect(() => {
+    loadProfiles();
+  }, []);
+
+  const loadProfiles = async () => {
+    try {
+      const list = await invoke<ConfigProfile[]>('list_config_profiles');
+      setProfiles(list);
+    } catch (err) {
+      console.error('Failed to load profiles:', err);
+    } finally {
+      setLoadingProfiles(false);
+    }
+  };
 
   const update = <K extends keyof UserConfig>(key: K, value: UserConfig[K]) => {
     onUpdate(key, value as string);
@@ -59,6 +77,40 @@ export const SettingsScreen: React.FC<Props> = ({ config, osInfo, onUpdate, onSa
     invoke('open_url', {
       url: 'https://gitlab.toogoerp.net/-/profile/personal_access_tokens?name=DevSetup&scopes=api,write_repository',
     });
+
+  const handleSaveAsProfile = async () => {
+    const name = prompt('Enter profile name:');
+    if (!name || name.trim().length === 0) return;
+
+    try {
+      await invoke('save_config_profile', { profileName: name.trim(), state: {} });
+      await loadProfiles();
+    } catch (err) {
+      alert(`Failed to save profile: ${err}`);
+    }
+  };
+
+  const handleLoadProfile = async (profileName: string) => {
+    try {
+      const loadedConfig = await invoke<UserConfig>('load_config_profile', { profileName });
+      // Apply the loaded config directly
+      await onSave(loadedConfig);
+      setSaved(true);
+    } catch (err) {
+      alert(`Failed to load profile: ${err}`);
+    }
+  };
+
+  const handleDeleteProfile = async (profileName: string) => {
+    if (!confirm(`Delete profile "${profileName}"?`)) return;
+
+    try {
+      await invoke('delete_config_profile', { profileName });
+      await loadProfiles();
+    } catch (err) {
+      alert(`Failed to delete profile: ${err}`);
+    }
+  };
 
   return (
     <div className="flex flex-col h-full p-8 overflow-y-auto">
@@ -174,29 +226,27 @@ export const SettingsScreen: React.FC<Props> = ({ config, osInfo, onUpdate, onSa
           </Section>
         )}
 
-        {/* Git Identity (Windows only) */}
-        {isWindows && (
-          <Section title="Git Identity">
-            <Field label="Full Name" hint="Used for git config user.name inside WSL">
-              <input
-                type="text"
-                value={config.git_name ?? ''}
-                onChange={(e) => update('git_name', e.target.value || null)}
-                className="input"
-                placeholder="Jane Smith"
-              />
-            </Field>
-            <Field label="Email Address" hint="Used for git config user.email and SSH key comment">
-              <input
-                type="email"
-                value={config.git_email ?? ''}
-                onChange={(e) => update('git_email', e.target.value || null)}
-                className="input"
-                placeholder="jane@example.com"
-              />
-            </Field>
-          </Section>
-        )}
+        {/* Git Identity */}
+        <Section title="Git Identity">
+          <Field label="Full Name" hint={isWindows ? "Used for git config user.name inside WSL" : "Used for git config user.name"}>
+            <input
+              type="text"
+              value={config.git_name ?? ''}
+              onChange={(e) => update('git_name', e.target.value || null)}
+              className="input"
+              placeholder="Jane Smith"
+            />
+          </Field>
+          <Field label="Email Address" hint="Used for git config user.email and SSH key comment">
+            <input
+              type="email"
+              value={config.git_email ?? ''}
+              onChange={(e) => update('git_email', e.target.value || null)}
+              className="input"
+              placeholder="jane@example.com"
+            />
+          </Field>
+        </Section>
 
         {/* Behaviour */}
         <Section title="Behaviour">
@@ -260,13 +310,22 @@ export const SettingsScreen: React.FC<Props> = ({ config, osInfo, onUpdate, onSa
         </Section>
 
         <Section title="Django Configuration">
-          <Field label="Tenant Name" hint="Tenant identifier for copy_tenant command and browser URL (e.g., erckinetic)">
+          <Field label="Tenant Name" hint="Display name for tenant (can have spaces, e.g., ERC Kinetic Conversion)">
             <input
               type="text"
               value={config.tenant_name}
               onChange={(e) => update('tenant_name', e.target.value)}
               className="input"
               placeholder="erckinetic"
+            />
+          </Field>
+          <Field label="Tenant ID" hint="Technical identifier used by copy_tenant command (no spaces, e.g., t2070)">
+            <input
+              type="text"
+              value={config.tenant_id}
+              onChange={(e) => update('tenant_id', e.target.value)}
+              className="input"
+              placeholder="t2070"
             />
           </Field>
           <Field label="Cluster Name" hint="Cluster name for copy_tenant command (e.g., stable)">
@@ -303,6 +362,71 @@ export const SettingsScreen: React.FC<Props> = ({ config, osInfo, onUpdate, onSa
               placeholder="Secret key..."
             />
           </Field>
+        </Section>
+
+        {/* Configuration Profiles */}
+        <Section title="Configuration Profiles">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Save named configurations for quick switching between different environments
+              </p>
+              <button
+                onClick={handleSaveAsProfile}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              >
+                <Bookmark className="w-4 h-4" />
+                Save As Profile
+              </button>
+            </div>
+
+            {loadingProfiles ? (
+              <div className="text-sm text-gray-500 dark:text-gray-400 py-4 text-center">
+                Loading profiles...
+              </div>
+            ) : profiles.length === 0 ? (
+              <div className="text-sm text-gray-500 dark:text-gray-400 py-4 text-center border border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
+                No saved profiles yet. Click "Save As Profile" to create one.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {profiles.map((profile) => (
+                  <div
+                    key={profile.name}
+                    className="flex items-center justify-between p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                  >
+                    <div className="flex-1">
+                      <div className="font-medium text-sm text-gray-900 dark:text-white">
+                        {profile.name}
+                      </div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        {profile.description}
+                      </div>
+                      <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                        Saved {new Date(profile.saved_at * 1000).toLocaleString()}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 ml-4">
+                      <button
+                        onClick={() => handleLoadProfile(profile.name)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        Apply
+                      </button>
+                      <button
+                        onClick={() => handleDeleteProfile(profile.name)}
+                        className="p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                        title="Delete profile"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </Section>
       </div>
 

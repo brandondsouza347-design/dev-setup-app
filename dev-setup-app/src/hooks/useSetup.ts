@@ -16,6 +16,7 @@ import type {
   WizardPage,
   AdminAgentStatus,
   RunHistory,
+  CustomWorkflow,
 } from '../types';
 
 interface UseSetupReturn {
@@ -58,6 +59,7 @@ interface UseSetupReturn {
   skipStep: (id: string) => Promise<void>;
   resetSetup: () => Promise<void>;
   openTerminal: () => Promise<void>;
+  executeWorkflow: (workflow: CustomWorkflow) => Promise<void>;
   // Revert actions
   startRevert: () => Promise<void>;
   retryRevertStep: (id: string) => Promise<void>;
@@ -97,6 +99,7 @@ export function useSetup(): UseSetupReturn {
     clone_dir: '/home/ubuntu/VsCodeProjects/erc',
     wsl_default_user: 'ubuntu',
     tenant_name: 'erckinetic',
+    tenant_id: 't2070',
     cluster_name: 'stable',
     aws_access_key_id: null,
     aws_secret_access_key: null,
@@ -347,6 +350,18 @@ export function useSetup(): UseSetupReturn {
     }
   }, []);
 
+  const executeWorkflow = useCallback(async (workflow: CustomWorkflow) => {
+    setIsRunning(true);
+    setSetupStarted(true);
+    setPage('progress');
+    try {
+      await invoke('execute_workflow', { workflowId: workflow.id });
+    } catch (e) {
+      console.error('Workflow execution error:', e);
+      setIsRunning(false);
+    }
+  }, []);
+
   const retryStep = useCallback(async (id: string) => {
     setIsRunning(true);
     try {
@@ -514,6 +529,7 @@ export function useSetup(): UseSetupReturn {
     saveConfig,
     updateConfig,
     startSetup,
+    executeWorkflow,
     stopSetup,
     resumeSetup,
     retryStep,

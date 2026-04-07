@@ -9,6 +9,7 @@ import { ProgressDashboard } from './components/ProgressDashboard';
 import { CompleteScreen } from './components/CompleteScreen';
 import { RevertScreen } from './components/RevertScreen';
 import { HistoryScreen } from './components/HistoryScreen';
+import { WorkflowScreen } from './components/WorkflowScreen';
 
 function App() {
   const setup = useSetup();
@@ -147,6 +148,16 @@ function App() {
               history={setup.history}
               onClearSelected={setup.clearHistoryByIds}
               onRefresh={setup.loadHistory}
+            />
+          </div>
+        )}
+
+        {setup.page === 'workflow' && (
+          <div className="h-full overflow-hidden flex flex-col">
+            <WorkflowScreen
+              steps={setup.steps}
+              onBack={() => setup.setPage('welcome')}
+              onExecuteWorkflow={setup.executeWorkflow}
             />
           </div>
         )}

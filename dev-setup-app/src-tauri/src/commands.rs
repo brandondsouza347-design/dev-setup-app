@@ -1,7 +1,7 @@
 // commands.rs — Tauri command handlers exposed to the React frontend
 use crate::admin_agent::{execute_via_agent, AdminAgentState};
 use crate::orchestrator::{execute_script_with_retry, find_step_by_id, get_revert_steps_for_os, get_steps_for_os, SetupStep};
-use crate::state::{AppState, CancelState, StepStatus, UserConfig, RunHistory, FailedStepLog, RunType, RunStatus};
+use crate::state::{AppState, CancelState, StepStatus, UserConfig, RunHistory, FailedStepLog, SkippedStepLog, RunType, RunStatus, ConfigProfile, CustomWorkflow};
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use std::path::PathBuf;
@@ -55,6 +55,7 @@ pub struct ConfigInput {
     pub clone_dir: Option<String>,
     pub wsl_default_user: String,
     pub tenant_name: String,
+    pub tenant_id: String,
     pub cluster_name: String,
     pub aws_access_key_id: Option<String>,
     pub aws_secret_access_key: Option<String>,
@@ -247,7 +248,7 @@ pub async fn start_setup(
         .as_secs() as i64;
 
     // Collect failed steps for history
-    let (started_at, failed_steps) = {
+    let (started_at, failed_steps, skipped_steps) = {
         let s = state.lock().unwrap();
         let failed_steps: Vec<FailedStepLog> = s.step_states
             .iter()
@@ -259,7 +260,15 @@ pub async fn start_setup(
                 logs: ss.logs.clone(),
             })
             .collect();
-        (s.setup_started_at.unwrap_or(started_at), failed_steps)
+        let skipped_steps: Vec<SkippedStepLog> = s.step_states
+            .iter()
+            .filter(|(_, ss)| ss.status == StepStatus::Skipped)
+            .map(|(_, ss)| SkippedStepLog {
+                step_id: ss.id.clone(),
+                step_name: steps.iter().find(|st| st.id == ss.id).map(|st| st.title.clone()).unwrap_or_else(|| ss.id.clone()),
+            })
+            .collect();
+        (s.setup_started_at.unwrap_or(started_at), failed_steps, skipped_steps)
     };
 
     let run_status = if failed_steps.is_empty() { RunStatus::Success } else { RunStatus::Failed };
@@ -273,6 +282,7 @@ pub async fn start_setup(
         run_status,
         steps.len(),
         failed_steps,
+        skipped_steps,
     ).await;
 
     {
@@ -433,6 +443,7 @@ pub async fn start_revert(
                     RunStatus::Failed,
                     revert_steps.len(),
                     vec![failed_step],
+                    vec![],
                 ).await;
 
                 return Err(format!("Revert step '{}' failed: {}", step.title, err));
@@ -453,6 +464,7 @@ pub async fn start_revert(
         completed_at,
         RunStatus::Success,
         revert_steps.len(),
+        vec![],
         vec![],
     ).await;
 
@@ -1161,6 +1173,11 @@ pub fn save_config(
         } else {
             input.tenant_name
         },
+        tenant_id: if input.tenant_id.trim().is_empty() {
+            "t2070".to_string()
+        } else {
+            input.tenant_id
+        },
         cluster_name: if input.cluster_name.trim().is_empty() {
             "stable".to_string()
         } else {
@@ -1238,6 +1255,7 @@ pub async fn save_run_history(
     status: RunStatus,
     step_count: usize,
     failed_steps: Vec<FailedStepLog>,
+    skipped_steps: Vec<SkippedStepLog>,
 ) -> Result<(), String> {
     let history_path = get_run_history_path(&app_handle)?;
 
@@ -1259,11 +1277,13 @@ pub async fn save_run_history(
     let new_entry = RunHistory {
         id,
         run_type,
+        workflow_name: None,
         started_at,
         completed_at,
         status,
         step_count,
         failed_steps,
+        skipped_steps,
     };
 
     // Add new entry and prune to last 20
@@ -1329,6 +1349,541 @@ pub async fn clear_run_history_by_ids(
         .map_err(|e| format!("Failed to write history file: {}", e))?;
 
     log::info!("Cleared {} history entries (remaining: {})", ids.len(), history.len());
+    Ok(())
+}
+
+// ─── Configuration Profile Management ───────────────────────────────────────
+
+fn get_profiles_dir_path(app_handle: &AppHandle) -> Result<PathBuf, String> {
+    use tauri::Manager;
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?;
+    let profiles_dir = app_data_dir.join("profiles");
+
+    // Create directory if it doesn't exist
+    if !profiles_dir.exists() {
+        fs::create_dir_all(&profiles_dir)
+            .map_err(|e| format!("Failed to create profiles directory: {}", e))?;
+    }
+
+    Ok(profiles_dir)
+}
+
+fn sanitize_profile_name(name: &str) -> String {
+    name.chars()
+        .map(|c| match c {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+            _ => c,
+        })
+        .collect()
+}
+
+fn generate_profile_description(config: &UserConfig) -> String {
+    let mut parts = Vec::new();
+
+    if !config.tenant_name.is_empty() && config.tenant_name != "erckinetic" {
+        parts.push(config.tenant_name.clone());
+    }
+    if !config.cluster_name.is_empty() && config.cluster_name != "stable" {
+        parts.push(config.cluster_name.clone());
+    }
+    if !config.python_version.is_empty() && config.python_version != "3.9.21" {
+        parts.push(format!("Python {}", config.python_version));
+    }
+    if !config.node_version.is_empty() && config.node_version != "16.20.2" {
+        parts.push(format!("Node {}", config.node_version));
+    }
+
+    if parts.is_empty() {
+        "Default configuration".to_string()
+    } else {
+        parts.join(" · ")
+    }
+}
+
+/// Saves the current configuration as a named profile.
+#[tauri::command]
+pub async fn save_config_profile(
+    app_handle: AppHandle,
+    profile_name: String,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<(), String> {
+    if profile_name.trim().is_empty() {
+        return Err("Profile name cannot be empty".to_string());
+    }
+
+    let profiles_dir = get_profiles_dir_path(&app_handle)?;
+    let sanitized_name = sanitize_profile_name(&profile_name);
+    let profile_path = profiles_dir.join(format!("{}.json", sanitized_name));
+
+    let config = state.lock().unwrap().config.clone();
+    let description = generate_profile_description(&config);
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| format!("System time error: {}", e))?
+        .as_secs() as i64;
+
+    let profile = ConfigProfile {
+        name: profile_name.clone(),
+        saved_at: now,
+        description,
+        config,
+    };
+
+    let json = serde_json::to_string_pretty(&profile)
+        .map_err(|e| format!("Failed to serialize profile: {}", e))?;
+
+    fs::write(&profile_path, json)
+        .map_err(|e| format!("Failed to write profile file: {}", e))?;
+
+    log::info!("Saved config profile: '{}' to {}", profile_name, profile_path.display());
+    Ok(())
+}
+
+/// Lists all saved configuration profiles.
+#[tauri::command]
+pub async fn list_config_profiles(app_handle: AppHandle) -> Result<Vec<ConfigProfile>, String> {
+    let profiles_dir = get_profiles_dir_path(&app_handle)?;
+
+    let mut profiles = Vec::new();
+
+    let entries = fs::read_dir(&profiles_dir)
+        .map_err(|e| format!("Failed to read profiles directory: {}", e))?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
+        let path = entry.path();
+
+        if path.extension().and_then(|s| s.to_str()) == Some("json") {
+            match fs::read_to_string(&path) {
+                Ok(content) => {
+                    match serde_json::from_str::<ConfigProfile>(&content) {
+                        Ok(profile) => profiles.push(profile),
+                        Err(e) => log::warn!("Failed to parse profile {}: {}", path.display(), e),
+                    }
+                }
+                Err(e) => log::warn!("Failed to read profile {}: {}", path.display(), e),
+            }
+        }
+    }
+
+    // Sort by saved_at descending (most recent first)
+    profiles.sort_by(|a, b| b.saved_at.cmp(&a.saved_at));
+
+    Ok(profiles)
+}
+
+/// Loads a saved profile and applies it to the current configuration.
+#[tauri::command]
+pub async fn load_config_profile(
+    app_handle: AppHandle,
+    profile_name: String,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<UserConfig, String> {
+    let profiles_dir = get_profiles_dir_path(&app_handle)?;
+    let sanitized_name = sanitize_profile_name(&profile_name);
+    let profile_path = profiles_dir.join(format!("{}.json", sanitized_name));
+
+    if !profile_path.exists() {
+        return Err(format!("Profile '{}' not found", profile_name));
+    }
+
+    let content = fs::read_to_string(&profile_path)
+        .map_err(|e| format!("Failed to read profile file: {}", e))?;
+
+    let profile: ConfigProfile = serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse profile: {}", e))?;
+
+    // Apply to current state
+    {
+        let mut s = state.lock().unwrap();
+        s.config = profile.config.clone();
+    }
+
+    log::info!("Loaded config profile: '{}'", profile_name);
+    Ok(profile.config)
+}
+
+/// Deletes a saved configuration profile.
+#[tauri::command]
+pub async fn delete_config_profile(
+    app_handle: AppHandle,
+    profile_name: String,
+) -> Result<(), String> {
+    let profiles_dir = get_profiles_dir_path(&app_handle)?;
+    let sanitized_name = sanitize_profile_name(&profile_name);
+    let profile_path = profiles_dir.join(format!("{}.json", sanitized_name));
+
+    if !profile_path.exists() {
+        return Err(format!("Profile '{}' not found", profile_name));
+    }
+
+    fs::remove_file(&profile_path)
+        .map_err(|e| format!("Failed to delete profile file: {}", e))?;
+
+    log::info!("Deleted config profile: '{}'", profile_name);
+    Ok(())
+}
+
+// ─── Workflow Management ────────────────────────────────────────────────────
+
+fn get_workflows_dir_path(app_handle: &AppHandle) -> Result<PathBuf, String> {
+    use tauri::Manager;
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?;
+    let workflows_dir = app_data_dir.join("workflows");
+
+    // Create directory if it doesn't exist
+    if !workflows_dir.exists() {
+        fs::create_dir_all(&workflows_dir)
+            .map_err(|e| format!("Failed to create workflows directory: {}", e))?;
+    }
+
+    Ok(workflows_dir)
+}
+
+/// Save a custom workflow
+#[tauri::command]
+pub async fn save_workflow(
+    app_handle: AppHandle,
+    workflow_id: String,
+    name: String,
+    description: String,
+    step_ids: Vec<String>,
+) -> Result<(), String> {
+    let workflows_dir = get_workflows_dir_path(&app_handle)?;
+    let workflow_path = workflows_dir.join(format!("{}.json", workflow_id));
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| format!("System time error: {}", e))?
+        .as_secs() as i64;
+
+    let workflow = CustomWorkflow {
+        id: workflow_id.clone(),
+        name: name.clone(),
+        description,
+        step_ids,
+        created_at: now,
+        last_run_at: None,
+    };
+
+    let json = serde_json::to_string_pretty(&workflow)
+        .map_err(|e| format!("Failed to serialize workflow: {}", e))?;
+
+    fs::write(&workflow_path, json)
+        .map_err(|e| format!("Failed to write workflow file: {}", e))?;
+
+    log::info!("Saved workflow: '{}' (ID: {}) to {}", name, workflow_id, workflow_path.display());
+    Ok(())
+}
+
+/// List all custom workflows
+#[tauri::command]
+pub async fn list_workflows(app_handle: AppHandle) -> Result<Vec<CustomWorkflow>, String> {
+    let workflows_dir = get_workflows_dir_path(&app_handle)?;
+    let mut workflows = Vec::new();
+
+    let entries = fs::read_dir(&workflows_dir)
+        .map_err(|e| format!("Failed to read workflows directory: {}", e))?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
+        let path = entry.path();
+
+        if path.extension().and_then(|s| s.to_str()) == Some("json") {
+            match fs::read_to_string(&path) {
+                Ok(content) => {
+                    match serde_json::from_str::<CustomWorkflow>(&content) {
+                        Ok(workflow) => workflows.push(workflow),
+                        Err(e) => log::warn!("Failed to parse workflow {}: {}", path.display(), e),
+                    }
+                }
+                Err(e) => log::warn!("Failed to read workflow {}: {}", path.display(), e),
+            }
+        }
+    }
+
+    // Sort by created_at descending (most recent first)
+    workflows.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+
+    Ok(workflows)
+}
+
+/// Delete a custom workflow
+#[tauri::command]
+pub async fn delete_workflow(
+    app_handle: AppHandle,
+    workflow_id: String,
+) -> Result<(), String> {
+    let workflows_dir = get_workflows_dir_path(&app_handle)?;
+    let workflow_path = workflows_dir.join(format!("{}.json", workflow_id));
+
+    if !workflow_path.exists() {
+        return Err(format!("Workflow '{}' not found", workflow_id));
+    }
+
+    fs::remove_file(&workflow_path)
+        .map_err(|e| format!("Failed to delete workflow file: {}", e))?;
+
+    log::info!("Deleted workflow: ID={}", workflow_id);
+    Ok(())
+}
+
+/// Update workflow last_run_at timestamp
+#[tauri::command]
+pub async fn update_workflow_last_run(
+    app_handle: AppHandle,
+    workflow_id: String,
+) -> Result<(), String> {
+    let workflows_dir = get_workflows_dir_path(&app_handle)?;
+    let workflow_path = workflows_dir.join(format!("{}.json", workflow_id));
+
+    if !workflow_path.exists() {
+        return Err(format!("Workflow '{}' not found", workflow_id));
+    }
+
+    let content = fs::read_to_string(&workflow_path)
+        .map_err(|e| format!("Failed to read workflow file: {}", e))?;
+
+    let mut workflow: CustomWorkflow = serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse workflow: {}", e))?;
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| format!("System time error: {}", e))?
+        .as_secs() as i64;
+
+    workflow.last_run_at = Some(now);
+
+    let json = serde_json::to_string_pretty(&workflow)
+        .map_err(|e| format!("Failed to serialize workflow: {}", e))?;
+
+    fs::write(&workflow_path, json)
+        .map_err(|e| format!("Failed to write workflow file: {}", e))?;
+
+    log::info!("Updated last_run_at for workflow: ID={}", workflow_id);
+    Ok(())
+}
+
+/// Execute a custom workflow (run only the steps defined in the workflow)
+#[tauri::command]
+pub async fn execute_workflow(
+    window: WebviewWindow,
+    app_handle: AppHandle,
+    state: State<'_, Mutex<AppState>>,
+    workflow_id: String,
+) -> Result<(), String> {
+    let started_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| format!("System time error: {}", e))?
+        .as_secs() as i64;
+
+    // Load workflow
+    let workflows_dir = get_workflows_dir_path(&app_handle)?;
+    let workflow_path = workflows_dir.join(format!("{}.json", workflow_id));
+
+    if !workflow_path.exists() {
+        return Err(format!("Workflow '{}' not found", workflow_id));
+    }
+
+    let content = fs::read_to_string(&workflow_path)
+        .map_err(|e| format!("Failed to read workflow file: {}", e))?;
+
+    let workflow: CustomWorkflow = serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse workflow: {}", e))?;
+
+    log::info!("execute_workflow: Starting workflow '{}' with {} steps", workflow.name, workflow.step_ids.len());
+
+    // Get all steps and filter by workflow.step_ids
+    let (steps, config) = {
+        let mut s = state.lock().unwrap();
+        s.setup_started = true;
+        s.setup_started_at = Some(started_at);
+        s.current_step_index = 0;
+        let os = detect_os();
+        let all_steps = get_steps_for_os(&os.os);
+
+        // Filter steps to only include those in workflow
+        let steps: Vec<SetupStep> = all_steps
+            .into_iter()
+            .filter(|step| workflow.step_ids.contains(&step.id))
+            .collect();
+
+        // Sort steps by their order in workflow.step_ids
+        let mut ordered_steps = Vec::new();
+        for step_id in &workflow.step_ids {
+            if let Some(step) = steps.iter().find(|s| &s.id == step_id) {
+                ordered_steps.push(step.clone());
+            }
+        }
+
+        log::info!("execute_workflow: {} steps matched from workflow definition", ordered_steps.len());
+
+        for step in &ordered_steps {
+            s.get_or_create_step(&step.id);
+        }
+        (ordered_steps, s.config.clone())
+    };
+
+    // Execute workflow steps
+    for (idx, step) in steps.iter().enumerate() {
+        // Check if already done or skipped
+        let current_status = {
+            let s = state.lock().unwrap();
+            s.step_states.get(&step.id).map(|ss| ss.status.clone())
+        };
+        if matches!(current_status, Some(StepStatus::Done) | Some(StepStatus::Skipped)) {
+            continue;
+        }
+
+        // Add workspace stabilization delay if needed
+        if idx > 0 {
+            let prev_step = &steps[idx - 1];
+            if prev_step.id == "setup_workspace" || prev_step.id == "setup_workspace_mac" {
+                log::info!("execute_workflow: pausing 5s after '{}' for VS Code to stabilize", prev_step.id);
+                emit_frontend_log(
+                    &window,
+                    &step.id,
+                    "⏸ Waiting 5 seconds for VS Code to stabilize...",
+                    "info",
+                );
+                tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+            }
+        }
+
+        // Mark running
+        {
+            let mut s = state.lock().unwrap();
+            s.current_step_index = idx;
+            let ss = s.get_or_create_step(&step.id);
+            ss.status = StepStatus::Running;
+        }
+        log::info!("execute_workflow: running step [{}/{}] id={} title='{}'", idx + 1, steps.len(), step.id, step.title);
+        let _ = window.emit("step_status", serde_json::json!({ "id": step.id, "status": "running" }));
+
+        let start = std::time::Instant::now();
+        let result = execute_script_with_retry(window.clone(), app_handle.clone(), step, &config).await;
+        let duration = start.elapsed().as_secs();
+
+        {
+            let mut s = state.lock().unwrap();
+            let ss = s.get_or_create_step(&step.id);
+            ss.duration_secs = Some(duration);
+
+            match result {
+                Ok(_) => {
+                    ss.status = StepStatus::Done;
+                    let _ = window.emit("step_status", serde_json::json!({ "id": step.id, "status": "done" }));
+                }
+                Err(e) => {
+                    ss.status = StepStatus::Failed;
+                    ss.error = Some(e.clone());
+                    let _ = window.emit("step_status", serde_json::json!({ "id": step.id, "status": "failed", "error": e }));
+                    log::error!("execute_workflow: step '{}' failed: {}", step.id, e);
+                    return Err(format!("Workflow step '{}' failed: {}", step.title, e));
+                }
+            }
+        }
+    }
+
+    // Mark workflow as complete
+    {
+        let mut s = state.lock().unwrap();
+        s.setup_complete = true;
+    }
+
+    // Update workflow last_run_at
+    update_workflow_last_run(app_handle.clone(), workflow_id.clone()).await?;
+
+    // Save to history
+    let completed_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| format!("System time error: {}", e))?
+        .as_secs() as i64;
+
+    let (status, failed_steps_logs, skipped_steps_logs) = {
+        let s = state.lock().unwrap();
+        let mut failed = Vec::new();
+        let mut skipped = Vec::new();
+
+        for step in &steps {
+            if let Some(ss) = s.step_states.get(&step.id) {
+                match ss.status {
+                    StepStatus::Failed => {
+                        failed.push(FailedStepLog {
+                            step_id: step.id.clone(),
+                            step_name: step.title.clone(),
+                            error_message: ss.error.clone(),
+                            logs: ss.logs.clone(),
+                        });
+                    }
+                    StepStatus::Skipped => {
+                        skipped.push(SkippedStepLog {
+                            step_id: step.id.clone(),
+                            step_name: step.title.clone(),
+                        });
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        let status = if !failed.is_empty() {
+            RunStatus::Failed
+        } else {
+            RunStatus::Success
+        };
+
+        (status, failed, skipped)
+    };
+
+    // Create history entry via the existing save_run_history function
+    // But first we need to add workflow_name support to it
+    // For now, save directly to file
+    let history_path = get_run_history_path(&app_handle)?;
+    let mut history: Vec<RunHistory> = if history_path.exists() {
+        let content = fs::read_to_string(&history_path)
+            .map_err(|e| format!("Failed to read history file: {}", e))?;
+        serde_json::from_str(&content).unwrap_or_else(|_| Vec::new())
+    } else {
+        Vec::new()
+    };
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| format!("System time error: {}", e))?;
+    let id = format!("{}-{}", now.as_secs(), now.subsec_nanos());
+
+    let new_entry = RunHistory {
+        id,
+        run_type: RunType::Workflow,
+        workflow_name: Some(workflow.name.clone()),
+        started_at,
+        completed_at,
+        status,
+        step_count: steps.len(),
+        failed_steps: failed_steps_logs,
+        skipped_steps: skipped_steps_logs,
+    };
+
+    history.push(new_entry);
+    if history.len() > 20 {
+        let skip_count = history.len() - 20;
+        history = history.into_iter().skip(skip_count).collect();
+    }
+
+    let json = serde_json::to_string_pretty(&history)
+        .map_err(|e| format!("Failed to serialize history: {}", e))?;
+    fs::write(&history_path, json)
+        .map_err(|e| format!("Failed to write history file: {}", e))?;
+
+    log::info!("execute_workflow: Workflow '{}' completed successfully", workflow.name);
     Ok(())
 }
 

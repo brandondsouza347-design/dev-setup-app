@@ -84,7 +84,7 @@ echo ""
 
 # Copy the progress tracker script to the project directory
 TRACKER_SCRIPT="$CLONE_DIR/track_copy_tenant.py"
-SCRIPTS_DIR="$(dirname "$(readlink -f "$0")")"
+SCRIPTS_DIR="$(dirname "$0")"
 if [ -f "$SCRIPTS_DIR/../django/track_copy_tenant.py" ]; then
     cp "$SCRIPTS_DIR/../django/track_copy_tenant.py" "$TRACKER_SCRIPT"
     chmod +x "$TRACKER_SCRIPT"

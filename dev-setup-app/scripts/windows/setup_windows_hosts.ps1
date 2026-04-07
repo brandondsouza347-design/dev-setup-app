@@ -1,13 +1,23 @@
 # setup_windows_hosts.ps1
-# Add 127.0.0.1 t3582.local to the Windows hosts file if not already present
+# Add 127.0.0.1 tenant entries to the Windows hosts file if not already present
 # Must run as Administrator
 #Requires -RunAsAdministrator
 $ErrorActionPreference = "Stop"
 
 $hostsPath = "C:\Windows\System32\drivers\etc\hosts"
+
+# Get tenant name from environment variable (fallback to erckinetic for backwards compatibility)
+$tenantName = $env:SETUP_TENANT_NAME
+if ([string]::IsNullOrWhiteSpace($tenantName)) {
+    $tenantName = "erckinetic"
+    Write-Host "⚠ SETUP_TENANT_NAME not set, using default: $tenantName" -ForegroundColor Yellow
+}
+
+Write-Host "==> Using tenant name: $tenantName"
+
 $entries = @(
     "127.0.0.1 t3582.local"
-    "127.0.0.1 erckinetic"
+    "127.0.0.1 $tenantName"
     "127.0.0.1 localhost"
 )
 

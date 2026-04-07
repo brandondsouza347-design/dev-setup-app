@@ -67,6 +67,8 @@ pub struct UserConfig {
     #[serde(default)]
     pub tenant_name: String,
     #[serde(default)]
+    pub tenant_id: String,
+    #[serde(default)]
     pub cluster_name: String,
     /// AWS credentials - NOT persisted to disk for security
     #[serde(skip)]
@@ -95,6 +97,7 @@ impl Default for UserConfig {
             clone_dir: Some("/home/ubuntu/VsCodeProjects/erc".to_string()),
             wsl_default_user: "ubuntu".to_string(),
             tenant_name: "erckinetic".to_string(),
+            tenant_id: "t2070".to_string(),
             cluster_name: "stable".to_string(),
             aws_access_key_id: None,
             aws_secret_access_key: None,
@@ -158,6 +161,7 @@ impl CancelState {
 pub enum RunType {
     Setup,
     Revert,
+    Workflow,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -177,12 +181,41 @@ pub struct FailedStepLog {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkippedStepLog {
+    pub step_id: String,
+    pub step_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunHistory {
     pub id: String,              // UUID
     pub run_type: RunType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workflow_name: Option<String>,  // Name of custom workflow if run_type=Workflow
     pub started_at: i64,          // Unix timestamp (seconds)
     pub completed_at: i64,        // Unix timestamp (seconds)
     pub status: RunStatus,
     pub step_count: usize,
     pub failed_steps: Vec<FailedStepLog>,
+    #[serde(default)]
+    pub skipped_steps: Vec<SkippedStepLog>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomWorkflow {
+    pub id: String,              // UUID
+    pub name: String,            // User-friendly workflow name
+    pub description: String,     // Optional description
+    pub step_ids: Vec<String>,   // Array of step IDs to execute in order
+    pub created_at: i64,         // Unix timestamp (seconds)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_run_at: Option<i64>, // Unix timestamp of last execution
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfigProfile {
+    pub name: String,
+    pub saved_at: i64,           // Unix timestamp (seconds)
+    pub description: String,     // Auto-generated summary
+    pub config: UserConfig,
 }

@@ -478,6 +478,16 @@ fn all_steps() -> Vec<SetupStep> {
             rollback_steps: vec![],
         },
         SetupStep {
+            id: "update_tenant_name".to_string(),
+            title: "Update Tenant Name in Database".to_string(),
+            description: "Update domain_client and domain_domain tables with the configured tenant name from settings.".to_string(),
+            platform: Platform::Windows,
+            category: StepCategory::Database,
+            required: false,
+            estimated_minutes: 1,
+            rollback_steps: vec![],
+        },
+        SetupStep {
             id: "install_frontend_deps".to_string(),
             title: "Install Frontend Dependencies".to_string(),
             description: "Run npm install in the client directory to install all Node.js packages required for frontend development.".to_string(),
@@ -554,6 +564,76 @@ fn all_steps() -> Vec<SetupStep> {
             description: "Display step-by-step instructions for selecting the pyenv virtualenv as VS Code's Python interpreter.".to_string(),
             platform: Platform::MacOs,
             category: StepCategory::Editor,
+            required: false,
+            estimated_minutes: 1,
+            rollback_steps: vec![],
+        },
+        SetupStep {
+            id: "install_pip_requirements_mac".to_string(),
+            title: "Install pip Requirements".to_string(),
+            description: "Install all Python dependencies from requirements.txt in the project root using the activated virtual environment.".to_string(),
+            platform: Platform::MacOs,
+            category: StepCategory::Python,
+            required: false,
+            estimated_minutes: 5,
+            rollback_steps: vec![],
+        },
+        SetupStep {
+            id: "migrate_shared_mac".to_string(),
+            title: "Migrate Shared Schemas".to_string(),
+            description: "Run Django migrate_schemas --shared to create the shared database schema structure.".to_string(),
+            platform: Platform::MacOs,
+            category: StepCategory::Database,
+            required: false,
+            estimated_minutes: 2,
+            rollback_steps: vec![],
+        },
+        SetupStep {
+            id: "copy_tenant_mac".to_string(),
+            title: "Copy Tenant Data".to_string(),
+            description: "Run Django copy_tenant command to set up tenant data from the configured cluster and tenant.".to_string(),
+            platform: Platform::MacOs,
+            category: StepCategory::Database,
+            required: false,
+            estimated_minutes: 10,
+            rollback_steps: vec![],
+        },
+        SetupStep {
+            id: "update_tenant_name_mac".to_string(),
+            title: "Update Tenant Name in Database".to_string(),
+            description: "Update domain_client and domain_domain tables with the configured tenant name from settings.".to_string(),
+            platform: Platform::MacOs,
+            category: StepCategory::Database,
+            required: false,
+            estimated_minutes: 1,
+            rollback_steps: vec![],
+        },
+        SetupStep {
+            id: "install_frontend_deps_mac".to_string(),
+            title: "Install Frontend Dependencies".to_string(),
+            description: "Run npm install in the client directory to install all Node.js packages required for frontend development.".to_string(),
+            platform: Platform::MacOs,
+            category: StepCategory::Node,
+            required: false,
+            estimated_minutes: 5,
+            rollback_steps: vec![],
+        },
+        SetupStep {
+            id: "start_frontend_watch_mac".to_string(),
+            title: "Build Front-End Assets".to_string(),
+            description: "Run npm build to compile front-end assets for production use.".to_string(),
+            platform: Platform::MacOs,
+            category: StepCategory::Node,
+            required: false,
+            estimated_minutes: 5,
+            rollback_steps: vec![],
+        },
+        SetupStep {
+            id: "start_gunicorn_mac".to_string(),
+            title: "Start Gunicorn Server".to_string(),
+            description: "Start the Gunicorn ASGI server with uvicorn worker in the background for local development.".to_string(),
+            platform: Platform::MacOs,
+            category: StepCategory::Python,
             required: false,
             estimated_minutes: 1,
             rollback_steps: vec![],
@@ -681,10 +761,17 @@ pub async fn execute_script(
         "revert_wsl_distro" => 1800,        // 30 min
         "clone_repo" | "clone_repo_mac" => 3600, // 60 min — large repo on first clone
         "install_pip_requirements" => 1800, // 30 min — many Python packages to install
+        "install_pip_requirements_mac" => 1800, // 30 min — many Python packages to install
         "install_frontend_deps" => 1800,    // 30 min — many Node.js packages to install
+        "install_frontend_deps_mac" => 1800, // 30 min — many Node.js packages to install
         "start_frontend_watch" => 1800,     // 30 min — npm build can take time
+        "start_frontend_watch_mac" => 1800, // 30 min — npm build can take time
         "migrate_shared" => 1800,           // 30 min — database migrations can be slow
-        "copy_tenant" => 7200,              // 120 min — copying tenant data from remote can take a while
+        "migrate_shared_mac" => 1800,       // 30 min — database migrations can be slow
+        "copy_tenant" => 10800,             // 180 min — copying tenant data from remote can take 3+ hours
+        "copy_tenant_mac" => 10800,         // 180 min — copying tenant data from remote can take 3+ hours
+        "update_tenant_name" => 300,        // 5 min — update database tables
+        "update_tenant_name_mac" => 300,    // 5 min — update database tables
         _ => 900,                           // 15 min default
     };
     let timeout = std::time::Duration::from_secs(timeout_secs);
@@ -843,6 +930,7 @@ fn build_script_command(
         "install_pip_requirements" => ("windows", "install_pip_requirements.sh", "wsl",     vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
         "migrate_shared"       => ("windows", "migrate_shared.sh",            "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
         "copy_tenant"          => ("windows", "copy_tenant.sh",               "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
+        "update_tenant_name"   => ("windows", "update_tenant_name.sh",       "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
         "install_frontend_deps" => ("windows", "install_frontend_deps.sh",    "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
         "start_frontend_watch" => ("windows", "start_frontend_watch.sh",      "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
         "start_gunicorn"       => ("windows", "start_gunicorn.sh",            "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
@@ -854,6 +942,13 @@ fn build_script_command(
         "pyenv_local_mac"         => ("macos", "pyenv_local.sh",         "bash", vec![]),
         "setup_workspace_mac"     => ("macos", "setup_workspace.sh",     "bash", vec![]),
         "python_interpreter_mac"  => ("macos", "python_interpreter.sh",  "bash", vec![]),
+        "install_pip_requirements_mac" => ("macos", "install_pip_requirements.sh", "bash", vec![]),
+        "migrate_shared_mac"       => ("macos", "migrate_shared.sh",            "bash", vec![]),
+        "copy_tenant_mac"          => ("macos", "copy_tenant.sh",               "bash", vec![]),
+        "update_tenant_name_mac"   => ("macos", "update_tenant_name.sh",       "bash", vec![]),
+        "install_frontend_deps_mac" => ("macos", "install_frontend_deps.sh",    "bash", vec![]),
+        "start_frontend_watch_mac" => ("macos", "start_frontend_watch.sh",      "bash", vec![]),
+        "start_gunicorn_mac"       => ("macos", "start_gunicorn.sh",            "bash", vec![]),
         // Revert scripts
         "revert_shutdown_wsl"  => ("windows", "revert_wsl_shutdown.ps1",   "powershell", vec![]),
         "revert_wsl_distro"    => ("windows", "revert_wsl_distro.ps1",     "powershell", vec![]),
@@ -954,6 +1049,7 @@ fn build_env(config: &UserConfig) -> Vec<(String, String)> {
         env.push(("SETUP_CLONE_DIR".to_string(), v.clone()));
     }
     env.push(("SETUP_TENANT_NAME".to_string(), config.tenant_name.clone()));
+    env.push(("SETUP_TENANT_ID".to_string(), config.tenant_id.clone()));
     env.push(("SETUP_CLUSTER_NAME".to_string(), config.cluster_name.clone()));
     if let Some(ref key_id) = config.aws_access_key_id {
         env.push(("SETUP_AWS_ACCESS_KEY_ID".to_string(), key_id.clone()));

@@ -51,6 +51,15 @@ fn main() {
             commands::save_run_history,
             commands::load_run_history,
             commands::clear_run_history_by_ids,
+            commands::save_config_profile,
+            commands::list_config_profiles,
+            commands::load_config_profile,
+            commands::delete_config_profile,
+            commands::save_workflow,
+            commands::list_workflows,
+            commands::delete_workflow,
+            commands::update_workflow_last_run,
+            commands::execute_workflow,
         ])
         .setup(|_app| {
             log::info!(

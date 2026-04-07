@@ -70,11 +70,23 @@ echo "==> Step 2: Installing pyenv via curl..."
 if [ "$SKIP_INSTALLED" = "true" ] && command -v pyenv &>/dev/null && [ -d "$HOME/.pyenv" ]; then
     echo "✓ pyenv already installed: $(pyenv --version)"
 elif command -v pyenv &>/dev/null && [ -d "$HOME/.pyenv" ]; then
-    echo "→ pyenv already installed but SKIP_INSTALLED=false — reinstalling..."
+    # SKIP_INSTALLED=false but pyenv exists — update it without deleting Python versions
+    echo "→ pyenv exists — updating (preserves Python versions)..."
     export GIT_SSL_NO_VERIFY=1
-    rm -rf "$HOME/.pyenv"
-    curl -fsSL --insecure https://pyenv.run | bash
-    echo "✓ pyenv reinstalled"
+
+    # Update pyenv itself if it's a git repo
+    if [ -d "$HOME/.pyenv/.git" ]; then
+        (cd "$HOME/.pyenv" && git pull --quiet 2>/dev/null || true)
+    fi
+
+    # Update plugins
+    for plugin in "$HOME/.pyenv/plugins"/*; do
+        if [ -d "$plugin/.git" ]; then
+            (cd "$plugin" && git pull --quiet 2>/dev/null || true)
+        fi
+    done
+
+    echo "✓ pyenv updated (Python versions preserved)"
 else
     # GIT_SSL_NO_VERIFY bypasses corporate CA for git clones inside pyenv.run
     export GIT_SSL_NO_VERIFY=1
@@ -100,18 +112,31 @@ echo "✓ pyenv shell integration configured"
 
 # ─── 4. Install Python ──────────────────────────────────────────────────────
 echo "==> Step 4: Installing Python $PYTHON_VERSION..."
-if [ "$SKIP_INSTALLED" = "true" ] && [ -d "$HOME/.pyenv/versions/$PYTHON_VERSION" ]; then
-    echo "✓ Python $PYTHON_VERSION already installed — skipping"
-elif [ -d "$HOME/.pyenv/versions/$PYTHON_VERSION" ]; then
-    echo "→ Python $PYTHON_VERSION already installed but SKIP_INSTALLED=false — reinstalling..."
-    # PYTHON_BUILD_CURL_OPTS bypasses corporate CA when pyenv downloads Python source
-    export PYTHON_BUILD_CURL_OPTS="-k"
-    export GIT_SSL_NO_VERIFY=1
-    pyenv uninstall -f "$PYTHON_VERSION" 2>/dev/null || true
-    pyenv install "$PYTHON_VERSION"
-    echo "✓ Python $PYTHON_VERSION reinstalled"
+
+# ENHANCED: Check if Python is already fully installed and working
+if [ -d "$HOME/.pyenv/versions/$PYTHON_VERSION" ] && \
+   [ -x "$HOME/.pyenv/versions/$PYTHON_VERSION/bin/python" ]; then
+
+    # Verify it's a working Python installation
+    if "$HOME/.pyenv/versions/$PYTHON_VERSION/bin/python" --version 2>&1 | grep -q "$PYTHON_VERSION"; then
+        echo "✓ Python $PYTHON_VERSION already installed and verified at $HOME/.pyenv/versions/$PYTHON_VERSION"
+        echo "  Skipping download to save time and bandwidth"
+
+        # Even if SKIP_INSTALLED=false, don't reinstall if it's working
+        if [ "$SKIP_INSTALLED" = "false" ]; then
+            echo "  (SKIP_INSTALLED=false but installation is valid, no action needed)"
+        fi
+    else
+        echo "⚠ Python $PYTHON_VERSION directory exists but appears broken — reinstalling..."
+        export PYTHON_BUILD_CURL_OPTS="-k"
+        export GIT_SSL_NO_VERIFY=1
+        pyenv uninstall -f "$PYTHON_VERSION" 2>/dev/null || true
+        pyenv install --skip-existing "$PYTHON_VERSION"
+        echo "✓ Python $PYTHON_VERSION reinstalled"
+    fi
 else
-    # PYTHON_BUILD_CURL_OPTS bypasses corporate CA when pyenv downloads Python source
+    # Directory doesn't exist or Python binary missing — install
+    echo "→ Installing Python $PYTHON_VERSION from source..."
     export PYTHON_BUILD_CURL_OPTS="-k"
     export GIT_SSL_NO_VERIFY=1
     pyenv install --skip-existing "$PYTHON_VERSION"

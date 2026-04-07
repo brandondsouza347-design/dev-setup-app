@@ -814,7 +814,7 @@ dependencies = [
 
 [[package]]
 name = "dev-setup-app"
-version = "2.0.1"
+version = "2.1.0"
 dependencies = [
  "dirs 5.0.1",
  "log",

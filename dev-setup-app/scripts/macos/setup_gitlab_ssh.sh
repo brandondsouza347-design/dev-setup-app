@@ -1,12 +1,47 @@
 #!/usr/bin/env bash
-# setup_gitlab_ssh.sh (macOS) — Generate SSH key (if needed), upload to GitLab via API, test connection
+# setup_gitlab_ssh.sh (macOS) — Configure Git identity, generate SSH key, upload to GitLab via API, test connection
 set -euo pipefail
 
+GIT_NAME="${SETUP_GIT_NAME:-}"
+GIT_EMAIL="${SETUP_GIT_EMAIL:-}"
 GITLAB_REPO_URL="${SETUP_GITLAB_REPO_URL:-git@gitlab.toogoerp.net:root/erc.git}"
 SKIP_INSTALLED="${SETUP_SKIP_INSTALLED:-true}"
 GITLAB_HOST=$(echo "$GITLAB_REPO_URL" | sed 's/git@\([^:]*\):.*/\1/')
 
-echo "→ Step 1/3: Ensuring SSH key exists..."
+echo "==> Git & SSH Configuration for GitLab"
+
+# ─── Step 0: Configure Git identity ──────────────────────────────────────────
+
+echo ""
+echo "→ Step 0/4: Configuring Git identity..."
+
+EXISTING_NAME="$(git config --global user.name 2>/dev/null || true)"
+EXISTING_EMAIL="$(git config --global user.email 2>/dev/null || true)"
+
+if [ -n "$EXISTING_NAME" ] && [ -n "$EXISTING_EMAIL" ]; then
+    echo "✓ Git identity already configured:"
+    echo "   Name : $EXISTING_NAME"
+    echo "   Email: $EXISTING_EMAIL"
+elif [ -n "$GIT_NAME" ] && [ -n "$GIT_EMAIL" ]; then
+    git config --global user.name  "$GIT_NAME"
+    git config --global user.email "$GIT_EMAIL"
+    git config --global core.autocrlf input
+    git config --global init.defaultBranch main
+    git config --global pull.rebase false
+    echo "✓ Git identity configured: $GIT_NAME ($GIT_EMAIL)"
+else
+    git config --global core.autocrlf input
+    git config --global init.defaultBranch main
+    git config --global pull.rebase false
+    echo "⚠ No name/email provided in Settings — core settings applied, identity skipped."
+    echo "  Set manually: git config --global user.name 'Your Name'"
+    echo "  Set manually: git config --global user.email 'you@example.com'"
+fi
+
+# ─── Step 1: Ensure SSH key exists ───────────────────────────────────────────
+
+echo ""
+echo "→ Step 1/4: Ensuring SSH key exists..."
 mkdir -p ~/.ssh
 chmod 700 ~/.ssh
 if [ ! -f ~/.ssh/id_ed25519 ]; then
@@ -20,7 +55,7 @@ fi
 PUB_KEY=$(cat ~/.ssh/id_ed25519.pub)
 echo "  Public key: $PUB_KEY"
 
-echo "→ Step 2/3: Checking and uploading SSH key to GitLab..."
+echo "→ Step 2/4: Checking and uploading SSH key to GitLab..."
 if [ -n "${SETUP_GITLAB_PAT:-}" ]; then
     # Get the SHA256 fingerprint of the local public key
     LOCAL_FP=$(ssh-keygen -l -E sha256 -f ~/.ssh/id_ed25519.pub 2>/dev/null | awk '{print $2}')
@@ -83,7 +118,7 @@ else
     echo "       $PUB_KEY"
 fi
 
-echo "→ Step 3/3: Testing SSH connection to ${GITLAB_HOST}..."
+echo "→ Step 3/4: Testing SSH connection to ${GITLAB_HOST}..."
 ssh -T "git@${GITLAB_HOST}" \
     -o StrictHostKeyChecking=accept-new \
     -o ConnectTimeout=10 \
