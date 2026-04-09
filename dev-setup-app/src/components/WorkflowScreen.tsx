@@ -166,7 +166,7 @@ export const WorkflowScreen: React.FC<Props> = ({ steps, config, onBack, onExecu
             <Plus className="w-4 h-4" />
             Create New Workflow
           </button>
-          
+
           {/* macOS VPN Template Button - only show on macOS */}
           {isMac && (
             <button
@@ -401,10 +401,10 @@ export const WorkflowScreen: React.FC<Props> = ({ steps, config, onBack, onExecu
                           {workflow.name}
                         </h4>
                         {/* Show Mac icon if workflow has Mac-specific steps */}
-                        {workflow.step_ids.some(id => 
+                        {workflow.step_ids.some(id =>
                           id.includes('_mac') || id.includes('_cli')
                         ) && (
-                          <span 
+                          <span
                             className="text-xs px-2 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded"
                             title="macOS specific workflow"
                           >

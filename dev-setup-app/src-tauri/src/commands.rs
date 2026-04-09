@@ -1342,7 +1342,7 @@ pub async fn install_openvpn_prereq(
     if os.os == "macos" && result.is_err() {
         emit_frontend_log(&window, "__prereq_action__", "⚠ Tunnelblick installation failed from all sources", "warn");
         emit_frontend_log(&window, "__prereq_action__", "▶ Falling back to OpenVPN CLI installation", "info");
-        
+
         let cli_step = SetupStep {
             id: "install_openvpn_cli".to_string(),
             title: "Install OpenVPN CLI".to_string(),
@@ -1353,9 +1353,9 @@ pub async fn install_openvpn_prereq(
             estimated_minutes: 2,
             rollback_steps: vec![],
         };
-        
+
         let cli_result = execute_script_with_retry(window.clone(), app_handle.clone(), &cli_step, &config).await;
-        
+
         match cli_result {
             Ok(_) => {
                 // Update vpn_method in state
@@ -1484,7 +1484,7 @@ pub async fn connect_vpn_prereq(
     state: State<'_, Mutex<AppState>>,
 ) -> Result<(), String> {
     let os = detect_os();
-    
+
     let (step_id, title, description) = if os.os == "windows" {
         (
             "connect_vpn",
@@ -1497,7 +1497,7 @@ pub async fn connect_vpn_prereq(
             let s = state.lock().unwrap();
             s.config.vpn_method.clone()
         };
-        
+
         match vpn_method.as_deref() {
             Some("openvpn-cli") => (
                 "connect_vpn_cli",
@@ -1559,7 +1559,7 @@ pub async fn install_tunnelblick_manual_prereq(
     state: State<'_, Mutex<AppState>>,
 ) -> Result<(), String> {
     let os = detect_os();
-    
+
     if os.os != "macos" {
         return Err("Manual Tunnelblick installation is only available on macOS".to_string());
     }
@@ -1611,7 +1611,7 @@ pub async fn disconnect_vpn_prereq(
     state: State<'_, Mutex<AppState>>,
 ) -> Result<(), String> {
     let os = detect_os();
-    
+
     if os.os != "macos" {
         return Err("VPN disconnect is only available on macOS".to_string());
     }
@@ -2269,7 +2269,7 @@ pub async fn delete_workflow(
 pub async fn create_macos_vpn_workflow_template(
     app_handle: AppHandle,
 ) -> Result<String, String> {
-    let workflow_id = format!("macos_vpn_openvpn_cli_{}", 
+    let workflow_id = format!("macos_vpn_openvpn_cli_{}",
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_err(|e| format!("System time error: {}", e))?

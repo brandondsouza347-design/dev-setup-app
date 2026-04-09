@@ -395,10 +395,10 @@ export function useSetup(): UseSetupReturn {
 
   const executeWorkflow = useCallback(async (workflow: CustomWorkflow) => {
     // Check prerequisites for VPN workflows
-    const hasVPNSteps = workflow.step_ids.some(id => 
+    const hasVPNSteps = workflow.step_ids.some(id =>
       id.includes('openvpn') || id.includes('vpn')
     );
-    
+
     if (hasVPNSteps && !config.openvpn_config_path) {
       const confirmed = window.confirm(
         'This workflow requires a VPN configuration file.\n\n' +

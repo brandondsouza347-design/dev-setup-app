@@ -879,15 +879,15 @@ pub async fn execute_script(
     } else {
         let code = status.code().unwrap_or(-1);
         let duration = start.elapsed().as_secs();
-        
+
         // Special handling for enable_wsl: exit code 1 means restart required (not failure)
         if step.id == "enable_wsl" && code == 1 {
             // Check if logs contain the restart message
-            let has_restart_msg = all_logs.iter().any(|line| 
-                line.contains("RESTART WINDOWS REQUIRED") || 
+            let has_restart_msg = all_logs.iter().any(|line|
+                line.contains("RESTART WINDOWS REQUIRED") ||
                 line.contains("RESTART REQUIRED")
             );
-            
+
             if has_restart_msg {
                 log::warn!("execute_script: step 'enable_wsl' requires system restart (exit=1)");
                 emit_log(
@@ -901,7 +901,7 @@ pub async fn execute_script(
                 return Ok(all_logs);
             }
         }
-        
+
         let msg = format!("Script exited with code {}", code);
         log::error!("execute_script: step '{}' FAILED — exit code={} duration={}s", step.id, code, duration);
         emit_log(&window, &step.id, &msg, LogLevel::Error);
@@ -1127,7 +1127,7 @@ fn build_env(config: &UserConfig) -> Vec<(String, String)> {
 fn emit_log(window: &WebviewWindow, step_id: &str, line: &str, level: LogLevel) {
     // 🔒 SECURITY: Redact sensitive data from logs before emitting to UI
     let redacted_line = crate::security::redact_sensitive_log(line);
-    
+
     let _ = window.emit(
         "step_log",
         LogEvent {
