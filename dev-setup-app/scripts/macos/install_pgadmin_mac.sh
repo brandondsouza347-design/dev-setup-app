@@ -2,13 +2,19 @@
 # install_pgadmin_mac.sh — Install pgAdmin 4 GUI for PostgreSQL database management
 set -euo pipefail
 
-echo "==> Installing pgAdmin 4..."
-
-# Check if Homebrew is available
-if ! command -v brew >/dev/null 2>&1; then
-    echo "✗ Homebrew not found. Please install Homebrew first."
-    exit 1
+# Ensure Homebrew is in PATH
+if ! command -v brew &>/dev/null; then
+    if [ -x "/usr/local/bin/brew" ]; then
+        export PATH="/usr/local/bin:$PATH"
+    elif [ -x "/opt/homebrew/bin/brew" ]; then
+        export PATH="/opt/homebrew/bin:$PATH"
+    else
+        echo "✗ Homebrew not found. Please install Homebrew first."
+        exit 1
+    fi
 fi
+
+echo "==> Installing pgAdmin 4..."
 
 # Check if pgAdmin is already installed
 if [ -d "/Applications/pgAdmin 4.app" ]; then

@@ -2,6 +2,15 @@
 # setup_redis.sh — Install Redis via Homebrew and start as a service
 set -euo pipefail
 
+# Ensure Homebrew is in PATH
+if ! command -v brew &>/dev/null; then
+    if [ -x "/usr/local/bin/brew" ]; then
+        export PATH="/usr/local/bin:$PATH"
+    elif [ -x "/opt/homebrew/bin/brew" ]; then
+        export PATH="/opt/homebrew/bin:$PATH"
+    fi
+fi
+
 SKIP_INSTALLED="${SETUP_SKIP_INSTALLED:-true}"
 
 echo "==> Redis Setup"

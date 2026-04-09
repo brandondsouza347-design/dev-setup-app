@@ -2,6 +2,18 @@
 # install_openvpn.sh (macOS) — Install Tunnelblick and stage the .ovpn config
 set -euo pipefail
 
+# Ensure Homebrew is in PATH (check both Intel and Apple Silicon locations)
+if ! command -v brew &>/dev/null; then
+    if [ -x "/usr/local/bin/brew" ]; then
+        export PATH="/usr/local/bin:$PATH"
+    elif [ -x "/opt/homebrew/bin/brew" ]; then
+        export PATH="/opt/homebrew/bin:$PATH"
+    else
+        echo "✗ Homebrew not found. Please install Homebrew first."
+        exit 1
+    fi
+fi
+
 SKIP_INSTALLED="${SETUP_SKIP_INSTALLED:-true}"
 
 echo "→ Step 1/2: Checking Tunnelblick installation..."

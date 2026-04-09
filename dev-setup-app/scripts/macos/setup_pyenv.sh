@@ -2,6 +2,15 @@
 # setup_pyenv.sh — Install pyenv, pyenv-virtualenv, Python 3.9.21, and create virtualenv
 set -euo pipefail
 
+# Ensure Homebrew is in PATH
+if ! command -v brew &>/dev/null; then
+    if [ -x "/usr/local/bin/brew" ]; then
+        export PATH="/usr/local/bin:$PATH"
+    elif [ -x "/opt/homebrew/bin/brew" ]; then
+        export PATH="/opt/homebrew/bin:$PATH"
+    fi
+fi
+
 PYTHON_VERSION="${SETUP_PYTHON_VERSION:-3.9.21}"
 VENV_NAME="${SETUP_VENV_NAME:-erc}"
 SKIP_INSTALLED="${SETUP_SKIP_INSTALLED:-true}"

@@ -138,7 +138,10 @@ else
     exit 1
 fi
 
-# Add Homebrew to PATH for Apple Silicon
+# Add Homebrew to PATH for this session (so brew commands work immediately)
+export PATH="$BREW_PREFIX/bin:$PATH"
+
+# Add Homebrew to PATH for future sessions (Apple Silicon only)
 if [ "$ARCH" = "arm64" ]; then
     echo ""
     echo "→ Configuring PATH for Apple Silicon..."
@@ -146,11 +149,10 @@ if [ "$ARCH" = "arm64" ]; then
         echo '' >> ~/.zprofile
         echo '# Homebrew' >> ~/.zprofile
         echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
-        echo "  ✓ Added to ~/.zprofile"
+        echo "  ✓ Added to ~/.zprofile for future sessions"
     else
         echo "  ✓ Already configured in ~/.zprofile"
     fi
-    eval "$(/opt/homebrew/bin/brew shellenv)"
 fi
 
 echo ""

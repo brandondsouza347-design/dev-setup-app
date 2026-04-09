@@ -2,6 +2,15 @@
 # setup_postgres.sh — Install PostgreSQL 16 via Homebrew, initialise cluster, create roles and databases
 set -euo pipefail
 
+# Ensure Homebrew is in PATH
+if ! command -v brew &>/dev/null; then
+    if [ -x "/usr/local/bin/brew" ]; then
+        export PATH="/usr/local/bin:$PATH"
+    elif [ -x "/opt/homebrew/bin/brew" ]; then
+        export PATH="/opt/homebrew/bin:$PATH"
+    fi
+fi
+
 PG_VERSION="16"
 PG_PASSWORD="${SETUP_POSTGRES_PASSWORD:-postgres}"
 PG_DB="${SETUP_POSTGRES_DB:-dev_db}"
