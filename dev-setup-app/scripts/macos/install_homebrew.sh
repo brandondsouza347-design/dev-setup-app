@@ -59,24 +59,26 @@ echo "  (This may take 3-5 minutes — a password dialog will appear)"
 echo "  → You'll be prompted for your admin password via macOS dialog"
 echo ""
 
-# Create a temporary script that will run the Homebrew installer
-TEMP_SCRIPT=$(mktemp)
-cat > "$TEMP_SCRIPT" << 'INSTALLER_EOF'
+# Create a GUI password helper for sudo prompts
+ASKPASS_SCRIPT=$(mktemp)
+cat > "$ASKPASS_SCRIPT" << 'ASKPASS_EOF'
 #!/bin/bash
-set -e
-export NONINTERACTIVE=1
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-INSTALLER_EOF
+osascript -e 'display dialog "Homebrew installation requires administrator privileges to create directories.\n\nEnter your password:" default answer "" with title "Homebrew Installation" with icon caution with hidden answer' -e 'text returned of result' 2>/dev/null
+ASKPASS_EOF
 
-chmod +x "$TEMP_SCRIPT"
+chmod +x "$ASKPASS_SCRIPT"
 
-# Use osascript to run with admin privileges (triggers password dialog)
-if osascript -e "do shell script \"'$TEMP_SCRIPT'\" with administrator privileges" 2>&1; then
-    rm -f "$TEMP_SCRIPT"
+# Export SUDO_ASKPASS so sudo can use our GUI helper
+export SUDO_ASKPASS="$ASKPASS_SCRIPT"
+
+# Run Homebrew installer as the regular user (not root!)
+# The installer will call sudo internally when needed, which will use our GUI helper
+if NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" 2>&1; then
+    rm -f "$ASKPASS_SCRIPT"
     echo ""
     echo "  ✓ Homebrew core installation complete"
 else
-    rm -f "$TEMP_SCRIPT"
+    rm -f "$ASKPASS_SCRIPT"
     echo ""
     echo "  ✗ Homebrew installation failed"
     echo ""
