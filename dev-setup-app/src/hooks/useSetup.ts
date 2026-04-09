@@ -198,7 +198,7 @@ export function useSetup(): UseSetupReturn {
         const { step_id, line, level } = event.payload;
 
         // Capture all prereq-related logs for comprehensive logging
-        const prereqStepIds = ['__prereq__', '__prereq_action__', 'install_openvpn', 'connect_vpn', 'install_openvpn_mac', 'connect_vpn_mac'];
+        const prereqStepIds = ['__prereq__', '__prereq_action__', 'install_openvpn', 'connect_vpn', 'install_openvpn_mac', 'connect_vpn_mac', 'xcode_clt', 'homebrew'];
         if (prereqStepIds.includes(step_id)) {
           setPrereqLogs((prev) => [...prev, { stepId: step_id, line, level, ts: Date.now() }]);
         }

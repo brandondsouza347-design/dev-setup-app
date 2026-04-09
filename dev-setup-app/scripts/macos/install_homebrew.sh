@@ -51,30 +51,45 @@ echo "  This script will:"
 echo "    • Create $BREW_PREFIX directory structure"
 echo "    • Download Homebrew repository (~200MB)"
 echo "    • Configure PATH and environment"
-echo "    • NO admin password required (user-owned directories)"
+echo "    • Requires admin password (will prompt via dialog)"
 echo ""
 
 echo "[3/3] Running Homebrew installation script..."
-echo "  (This may take 3-5 minutes and will show installation progress)"
+echo "  (This may take 3-5 minutes — a password dialog will appear)"
+echo "  → You'll be prompted for your admin password via macOS dialog"
 echo ""
 
-# Run the official Homebrew installer (with output visible)
-if /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" 2>&1; then
+# Create a temporary script that will run the Homebrew installer
+TEMP_SCRIPT=$(mktemp)
+cat > "$TEMP_SCRIPT" << 'INSTALLER_EOF'
+#!/bin/bash
+set -e
+export NONINTERACTIVE=1
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+INSTALLER_EOF
+
+chmod +x "$TEMP_SCRIPT"
+
+# Use osascript to run with admin privileges (triggers password dialog)
+if osascript -e "do shell script \"'$TEMP_SCRIPT'\" with administrator privileges" 2>&1; then
+    rm -f "$TEMP_SCRIPT"
     echo ""
     echo "  ✓ Homebrew core installation complete"
 else
+    rm -f "$TEMP_SCRIPT"
     echo ""
     echo "  ✗ Homebrew installation failed"
     echo ""
     echo "  Common issues:"
+    echo "    • User cancelled password prompt"
+    echo "    • Not an administrator account"
     echo "    • Network connectivity (check internet connection)"
-    echo "    • Xcode CLT not installed (install first)"
     echo "    • Disk space (need ~1GB free)"
     echo ""
     echo "  Manual installation:"
     echo "    1. Open Terminal"
     echo "    2. Run: /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
-    echo "    3. Follow prompts"
+    echo "    3. Follow prompts and enter password when asked"
     echo ""
     exit 1
 fi
