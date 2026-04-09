@@ -55,56 +55,48 @@ echo "    • Requires admin password (will prompt via dialog)"
 echo ""
 
 echo "[3/3] Running Homebrew installation script..."
-echo "  (This may take 3-5 minutes — a password dialog will appear)"
-echo "  → You'll be prompted for your admin password via macOS dialog"
+echo "  → A macOS dialog will appear asking for your admin password"
 echo ""
 
-# Create a temporary directory for our helper scripts
-TEMP_DIR=$(mktemp -d)
-
-# Create a GUI password helper for sudo prompts
-ASKPASS_SCRIPT="$TEMP_DIR/askpass"
+# Create a GUI password helper for sudo authentication
+ASKPASS_SCRIPT=$(mktemp)
 cat > "$ASKPASS_SCRIPT" << 'ASKPASS_EOF'
 #!/bin/bash
 osascript -e 'display dialog "Homebrew installation requires administrator privileges to create directories.\n\nEnter your password:" default answer "" with title "Homebrew Installation" with icon caution with hidden answer' -e 'text returned of result' 2>/dev/null
 ASKPASS_EOF
-
 chmod +x "$ASKPASS_SCRIPT"
-
-# Create a sudo wrapper that forces GUI password prompts
-SUDO_WRAPPER="$TEMP_DIR/sudo"
-cat > "$SUDO_WRAPPER" << 'SUDO_EOF'
-#!/bin/bash
-# Wrapper that forces sudo to use ASKPASS for GUI password prompts
-if [ -n "$SUDO_ASKPASS" ]; then
-    /usr/bin/sudo -A "$@"
-else
-    /usr/bin/sudo "$@"
-fi
-SUDO_EOF
-
-chmod +x "$SUDO_WRAPPER"
-
-# Export SUDO_ASKPASS and prepend our wrapper to PATH
 export SUDO_ASKPASS="$ASKPASS_SCRIPT"
-export PATH="$TEMP_DIR:$PATH"
 
-# Run Homebrew installer as the regular user (not root!)
-# The installer will call our sudo wrapper, which forces GUI password prompt
+# Pre-authenticate sudo to warm the credential cache (triggers GUI dialog).
+# Homebrew hard-codes /usr/bin/sudo with -n (non-interactive) internally, so it
+# requires the cache to already be warm — it cannot prompt on its own.
+echo "  → Requesting admin credentials via dialog..."
+if ! /usr/bin/sudo -A -v 2>&1; then
+    rm -f "$ASKPASS_SCRIPT"
+    echo ""
+    echo "  ✗ Admin authentication failed"
+    echo "  Please ensure your account ($(whoami)) has administrator privileges"
+    exit 1
+fi
+echo "  ✓ Admin credentials accepted — starting Homebrew installation"
+echo "  (This may take 3-5 minutes)"
+echo ""
+
+# Run Homebrew installer as the regular user (not root!).
+# The sudo credential cache is now warm so Homebrew's internal sudo calls succeed.
 if NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" 2>&1; then
-    rm -rf "$TEMP_DIR"
+    rm -f "$ASKPASS_SCRIPT"
     echo ""
     echo "  ✓ Homebrew core installation complete"
 else
-    rm -rf "$TEMP_DIR"
+    rm -f "$ASKPASS_SCRIPT"
     echo ""
     echo "  ✗ Homebrew installation failed"
     echo ""
     echo "  Common issues:"
-    echo "    • User cancelled password prompt"
-    echo "    • Not an administrator account"
     echo "    • Network connectivity (check internet connection)"
     echo "    • Disk space (need ~1GB free)"
+    echo "    • sudo credentials expired mid-install (installation took >15 min)"
     echo ""
     echo "  Manual installation:"
     echo "    1. Open Terminal"
