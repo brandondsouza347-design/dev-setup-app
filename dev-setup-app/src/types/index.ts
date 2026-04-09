@@ -42,6 +42,7 @@ export interface StepResult {
   error: string | null;
   retry_count: number;
   duration_secs: number | null;
+  restart_required: boolean;
 }
 
 export interface UserConfig {
@@ -117,9 +118,25 @@ export type WizardPage =
   | 'complete'
   | 'revert'
   | 'history'
-  | 'workflow';
+  | 'workflow'
+  | 'custom-progress';
 
 export type AdminAgentStatus = 'idle' | 'requesting' | 'ready' | 'error';
+
+// Navigation section for collapsible sidebar menus
+export interface NavSection {
+  id: string;
+  label: string;
+  icon?: React.ReactNode;
+  children: NavItem[];
+}
+
+export interface NavItem {
+  id: WizardPage;
+  label: string;
+  icon: React.ReactNode;
+  badge?: number;
+}
 
 // Run History types
 export type RunType = 'setup' | 'revert' | 'workflow';
@@ -157,6 +174,10 @@ export interface CustomWorkflow {
   step_ids: string[];      // Array of step IDs to execute in order
   created_at: number;      // Unix timestamp (seconds)
   last_run_at?: number;    // Unix timestamp of last execution
+  settings?: {             // Workflow-specific settings (overrides global)
+    overrides: Partial<UserConfig>;  // Custom values that override global settings
+    nullify: (keyof UserConfig)[];   // Settings explicitly disabled for this workflow
+  };
 }
 
 // Configuration Profile types

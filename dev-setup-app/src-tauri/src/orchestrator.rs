@@ -129,7 +129,7 @@ pub fn get_revert_steps_for_os(os: &str) -> Vec<SetupStep> {
         SetupStep {
             id: "revert_windows_hosts".to_string(),
             title: "Clean Windows Hosts File".to_string(),
-            description: "Remove dev hostnames (t3582.local, erckinetic) added by the setup tool. All other entries are preserved.".to_string(),
+            description: "Remove localhost entries with tenant name added by the setup tool. All other entries are preserved.".to_string(),
             platform: Platform::Windows,
             category: StepCategory::Revert,
             required: true,
@@ -205,8 +205,8 @@ fn all_steps() -> Vec<SetupStep> {
         },
         SetupStep {
             id: "nvm".to_string(),
-            title: "Install NVM + Node 22.10.0".to_string(),
-            description: "Install NVM (Node Version Manager) and Node.js 16.20.2 with Gulp.".to_string(),
+            title: "Install NVM v0.40.1 + Node 22.10.0".to_string(),
+            description: "Install NVM (Node Version Manager) v0.40.1 and Node.js 22.10.0 with Gulp for frontend development.".to_string(),
             platform: Platform::MacOs,
             category: StepCategory::Node,
             required: true,
@@ -231,6 +231,16 @@ fn all_steps() -> Vec<SetupStep> {
             category: StepCategory::Cache,
             required: false,
             estimated_minutes: 2,
+            rollback_steps: vec![],
+        },
+        SetupStep {
+            id: "mac_hosts".to_string(),
+            title: "Update macOS Hosts File".to_string(),
+            description: "Add 127.0.0.1 tenant entries (t3582.local, tenant name, localhost) to /etc/hosts for local development.".to_string(),
+            platform: Platform::MacOs,
+            category: StepCategory::Network,
+            required: true,
+            estimated_minutes: 1,
             rollback_steps: vec![],
         },
         SetupStep {
@@ -379,7 +389,7 @@ fn all_steps() -> Vec<SetupStep> {
         SetupStep {
             id: "windows_hosts".to_string(),
             title: "Update Windows Hosts File".to_string(),
-            description: "Add 127.0.0.1 t3582.local (and optional tenant entries) to C:\\Windows\\System32\\drivers\\etc\\hosts. Skips if entries already present.".to_string(),
+            description: "Add localhost entries with tenant name (127.0.0.1 and ::1 localhost <tenant_name>) to C:\\Windows\\System32\\drivers\\etc\\hosts for local dev access.".to_string(),
             platform: Platform::Windows,
             category: StepCategory::Network,
             required: false,
@@ -420,21 +430,21 @@ fn all_steps() -> Vec<SetupStep> {
         SetupStep {
             id: "setup_workspace".to_string(),
             title: "Open VS Code Workspace".to_string(),
-            description: "Write Kibana + GitLab MCP config, install all Propello.code-workspace extensions, and open the workspace in VS Code.".to_string(),
+            description: "Configure workspace trust and open the Propello workspace in VS Code (WSL remote mode).".to_string(),
             platform: Platform::Windows,
             category: StepCategory::Editor,
             required: false,
-            estimated_minutes: 3,
+            estimated_minutes: 1,
             rollback_steps: vec![],
         },
         SetupStep {
             id: "install_workspace_extensions".to_string(),
-            title: "Install Workspace Extensions".to_string(),
-            description: "Install all recommended extensions from Propello.code-workspace into the ERC WSL remote and the local Windows VS Code.".to_string(),
+            title: "Install Extensions + Configure MCP".to_string(),
+            description: "Install workspace extensions to WSL remote (dev tools: Python, ESLint, Black) and Windows (UI: icon theme, Remote-WSL). Then configure MCP servers (Kibana, GitLab, Atlassian) for both environments.".to_string(),
             platform: Platform::Windows,
             category: StepCategory::Editor,
             required: false,
-            estimated_minutes: 3,
+            estimated_minutes: 6,
             rollback_steps: vec![],
         },
         SetupStep {
@@ -517,6 +527,16 @@ fn all_steps() -> Vec<SetupStep> {
             estimated_minutes: 1,
             rollback_steps: vec![],
         },
+        SetupStep {
+            id: "install_pgadmin_windows".to_string(),
+            title: "Install pgAdmin 4 GUI".to_string(),
+            description: "Install pgAdmin 4 database management GUI for PostgreSQL. Optional tool for visual database management and SQL queries.".to_string(),
+            platform: Platform::Windows,
+            category: StepCategory::Database,
+            required: false,
+            estimated_minutes: 3,
+            rollback_steps: vec![],
+        },
         // ── GitLab onboarding track (macOS) ─────────────────────────────────────────────────
         SetupStep {
             id: "gitlab_ssh_mac".to_string(),
@@ -550,12 +570,12 @@ fn all_steps() -> Vec<SetupStep> {
         },
         SetupStep {
             id: "setup_workspace_mac".to_string(),
-            title: "Open VS Code Workspace".to_string(),
-            description: "Write Kibana + GitLab MCP config, install all Propello.code-workspace extensions, and open the workspace in VS Code.".to_string(),
+            title: "Setup Workspace + MCP".to_string(),
+            description: "Install all Propello.code-workspace extensions, configure MCP servers (Kibana, GitLab, Atlassian), enable MCP gallery, and open the workspace in VS Code.".to_string(),
             platform: Platform::MacOs,
             category: StepCategory::Editor,
             required: false,
-            estimated_minutes: 3,
+            estimated_minutes: 4,
             rollback_steps: vec![],
         },
         SetupStep {
@@ -636,6 +656,16 @@ fn all_steps() -> Vec<SetupStep> {
             category: StepCategory::Python,
             required: false,
             estimated_minutes: 1,
+            rollback_steps: vec![],
+        },
+        SetupStep {
+            id: "install_pgadmin_mac".to_string(),
+            title: "Install pgAdmin 4 GUI".to_string(),
+            description: "Install pgAdmin 4 database management GUI for PostgreSQL. Optional tool for visual database management and SQL queries.".to_string(),
+            platform: Platform::MacOs,
+            category: StepCategory::Database,
+            required: false,
+            estimated_minutes: 3,
             rollback_steps: vec![],
         },
     ]
@@ -849,6 +879,29 @@ pub async fn execute_script(
     } else {
         let code = status.code().unwrap_or(-1);
         let duration = start.elapsed().as_secs();
+        
+        // Special handling for enable_wsl: exit code 1 means restart required (not failure)
+        if step.id == "enable_wsl" && code == 1 {
+            // Check if logs contain the restart message
+            let has_restart_msg = all_logs.iter().any(|line| 
+                line.contains("RESTART WINDOWS REQUIRED") || 
+                line.contains("RESTART REQUIRED")
+            );
+            
+            if has_restart_msg {
+                log::warn!("execute_script: step 'enable_wsl' requires system restart (exit=1)");
+                emit_log(
+                    &window,
+                    &step.id,
+                    "⚠ System restart required — WSL features enabled",
+                    LogLevel::Warn,
+                );
+                // Mark logs with special restart marker for run_step to detect
+                all_logs.push("__RESTART_REQUIRED__".to_string());
+                return Ok(all_logs);
+            }
+        }
+        
         let msg = format!("Script exited with code {}", code);
         log::error!("execute_script: step '{}' FAILED — exit code={} duration={}s", step.id, code, duration);
         emit_log(&window, &step.id, &msg, LogLevel::Error);
@@ -902,6 +955,7 @@ fn build_script_command(
         "nvm"           => ("macos", "setup_nvm.sh",          "bash", vec![]),
         "postgres_mac"  => ("macos", "setup_postgres.sh",     "bash", vec![]),
         "redis_mac"     => ("macos", "setup_redis.sh",        "bash", vec![]),
+        "mac_hosts"     => ("macos", "setup_mac_hosts.sh",    "bash", vec![]),
         "vscode_mac"    => ("macos", "setup_vscode.sh",       "bash", vec![]),
         // Windows
         "enable_wsl"    => ("windows", "enable_wsl.ps1",          "powershell", vec![]),
@@ -934,6 +988,7 @@ fn build_script_command(
         "install_frontend_deps" => ("windows", "install_frontend_deps.sh",    "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
         "start_frontend_watch" => ("windows", "start_frontend_watch.sh",      "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
         "start_gunicorn"       => ("windows", "start_gunicorn.sh",            "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
+        "install_pgadmin_windows" => ("windows", "install_pgadmin.ps1",       "powershell", vec!["admin".to_string()]),
         // macOS GitLab onboarding track
         "install_openvpn_mac"     => ("macos", "install_openvpn.sh",     "bash", vec![]),
         "connect_vpn_mac"         => ("macos", "connect_vpn.sh",         "bash", vec![]),
@@ -949,6 +1004,7 @@ fn build_script_command(
         "install_frontend_deps_mac" => ("macos", "install_frontend_deps.sh",    "bash", vec![]),
         "start_frontend_watch_mac" => ("macos", "start_frontend_watch.sh",      "bash", vec![]),
         "start_gunicorn_mac"       => ("macos", "start_gunicorn.sh",            "bash", vec![]),
+        "install_pgadmin_mac"      => ("macos", "install_pgadmin_mac.sh",       "bash", vec![]),
         // Revert scripts
         "revert_shutdown_wsl"  => ("windows", "revert_wsl_shutdown.ps1",   "powershell", vec![]),
         "revert_wsl_distro"    => ("windows", "revert_wsl_distro.ps1",     "powershell", vec![]),
@@ -1064,11 +1120,14 @@ fn build_env(config: &UserConfig) -> Vec<(String, String)> {
 }
 
 fn emit_log(window: &WebviewWindow, step_id: &str, line: &str, level: LogLevel) {
+    // 🔒 SECURITY: Redact sensitive data from logs before emitting to UI
+    let redacted_line = crate::security::redact_sensitive_log(line);
+    
     let _ = window.emit(
         "step_log",
         LogEvent {
             step_id: step_id.to_string(),
-            line: line.to_string(),
+            line: redacted_line,
             level,
         },
     );

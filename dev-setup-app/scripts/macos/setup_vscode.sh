@@ -30,6 +30,53 @@ fi
 echo "✓ VS Code CLI found: $CODE_CMD"
 "$CODE_CMD" --version | head -1
 
+# ─── 1.5. Configure SSL bypass for corporate proxy environments ─────────────
+
+echo ""
+echo "==> Step 1.5: Configuring SSL bypass for corporate proxy..."
+
+# Set environment variables for SSL bypass
+export NODE_TLS_REJECT_UNAUTHORIZED="0"
+export NODE_NO_WARNINGS="1"
+export STRICT_SSL="false"
+export NPM_CONFIG_STRICT_SSL="false"
+echo "✓ Environment variables set for SSL bypass"
+
+# Configure npm to bypass SSL (VS Code uses npm internally for extensions)
+if command -v npm &>/dev/null; then
+    npm config set strict-ssl false --global 2>/dev/null || true
+    echo "✓ npm strict-ssl disabled globally"
+else
+    echo "⚠ npm not found - skipping npm configuration"
+fi
+
+# Configure Git to accept self-signed certificates
+if command -v git &>/dev/null; then
+    git config --global http.sslVerify false 2>/dev/null || true
+    echo "✓ Git SSL verification disabled globally"
+else
+    echo "⚠ git not found - skipping git configuration"
+fi
+
+# Pre-configure VS Code settings to bypass SSL
+VSCODE_SETTINGS_DIR="$HOME/Library/Application Support/Code/User"
+mkdir -p "$VSCODE_SETTINGS_DIR"
+SETTINGS_FILE="$VSCODE_SETTINGS_DIR/settings.json"
+
+if [ -f "$SETTINGS_FILE" ]; then
+    # Update existing settings
+    if command -v jq &>/dev/null; then
+        jq '. + {"http.proxyStrictSSL": false, "http.proxy": ""}' "$SETTINGS_FILE" > "$SETTINGS_FILE.tmp" && mv "$SETTINGS_FILE.tmp" "$SETTINGS_FILE"
+        echo "✓ VS Code proxy settings updated"
+    else
+        echo "⚠ jq not installed - skipping VS Code settings update"
+    fi
+else
+    # Create minimal settings file
+    echo '{"http.proxyStrictSSL": false, "http.proxy": ""}' > "$SETTINGS_FILE"
+    echo "✓ VS Code proxy settings created"
+fi
+
 # ─── 2. Install extensions ──────────────────────────────────────────────────
 
 echo ""

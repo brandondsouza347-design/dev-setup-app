@@ -25,6 +25,7 @@ pub struct StepResult {
     pub error: Option<String>,
     pub retry_count: u32,
     pub duration_secs: Option<u64>,
+    pub restart_required: bool,
 }
 
 #[derive(Serialize)]
@@ -33,7 +34,7 @@ pub struct FullState {
     pub current_step_index: usize,
     pub setup_started: bool,
     pub setup_complete: bool,
-    pub config: UserConfig,
+    pub config: ConfigOutput,
 }
 
 #[derive(Deserialize)]
@@ -60,6 +61,83 @@ pub struct ConfigInput {
     pub aws_access_key_id: Option<String>,
     pub aws_secret_access_key: Option<String>,
     pub wsl_backup_path: Option<String>,
+}
+
+/// Config output for sending to frontend (passwords NOT encrypted in transit)
+/// Frontend receives plain text passwords for display/editing
+#[derive(Serialize, Clone)]
+pub struct ConfigOutput {
+    pub wsl_tar_path: Option<String>,
+    pub wsl_install_dir: Option<String>,
+    pub wsl_backup_path: Option<String>,
+    pub postgres_password: String,
+    pub postgres_db_name: String,
+    pub python_version: String,
+    pub node_version: String,
+    pub venv_name: String,
+    pub skip_already_installed: bool,
+    pub skip_wsl_backup: bool,
+    pub openvpn_config_path: Option<String>,
+    pub git_name: Option<String>,
+    pub git_email: Option<String>,
+    pub gitlab_pat: Option<String>,
+    pub gitlab_repo_url: Option<String>,
+    pub clone_dir: Option<String>,
+    pub wsl_default_user: String,
+    pub tenant_name: String,
+    pub tenant_id: String,
+    pub cluster_name: String,
+    pub aws_access_key_id: Option<String>,
+    pub aws_secret_access_key: Option<String>,
+}
+
+impl From<&UserConfig> for ConfigOutput {
+    fn from(config: &UserConfig) -> Self {
+        ConfigOutput {
+            wsl_tar_path: config.wsl_tar_path.clone(),
+            wsl_install_dir: config.wsl_install_dir.clone(),
+            wsl_backup_path: config.wsl_backup_path.clone(),
+            postgres_password: config.postgres_password.clone(),
+            postgres_db_name: config.postgres_db_name.clone(),
+            python_version: config.python_version.clone(),
+            node_version: config.node_version.clone(),
+            venv_name: config.venv_name.clone(),
+            skip_already_installed: config.skip_already_installed,
+            skip_wsl_backup: config.skip_wsl_backup,
+            openvpn_config_path: config.openvpn_config_path.clone(),
+            git_name: config.git_name.clone(),
+            git_email: config.git_email.clone(),
+            gitlab_pat: config.gitlab_pat.clone(),
+            gitlab_repo_url: config.gitlab_repo_url.clone(),
+            clone_dir: config.clone_dir.clone(),
+            wsl_default_user: config.wsl_default_user.clone(),
+            tenant_name: config.tenant_name.clone(),
+            tenant_id: config.tenant_id.clone(),
+            cluster_name: config.cluster_name.clone(),
+            aws_access_key_id: config.aws_access_key_id.clone(),
+            aws_secret_access_key: config.aws_secret_access_key.clone(),
+        }
+    }
+}
+
+/// Config profile output for sending to frontend (passwords NOT encrypted)
+#[derive(Serialize, Clone)]
+pub struct ConfigProfileOutput {
+    pub name: String,
+    pub saved_at: i64,
+    pub description: String,
+    pub config: ConfigOutput,
+}
+
+impl From<&ConfigProfile> for ConfigProfileOutput {
+    fn from(profile: &ConfigProfile) -> Self {
+        ConfigProfileOutput {
+            name: profile.name.clone(),
+            saved_at: profile.saved_at,
+            description: profile.description.clone(),
+            config: ConfigOutput::from(&profile.config),
+        }
+    }
 }
 
 /// Detects the current operating system.
@@ -354,12 +432,30 @@ pub async fn run_step(
     ss.duration_secs = Some(duration);
 
     match result {
-        Ok(logs) => {
+        Ok(mut logs) => {
+            // Check if restart is required (special marker from orchestrator)
+            let restart_required = logs.iter().any(|line| line == "__RESTART_REQUIRED__");
+            if restart_required {
+                // Remove the marker from logs before storing
+                logs.retain(|line| line != "__RESTART_REQUIRED__");
+                ss.restart_required = true;
+                log::warn!("run_step: step '{}' completed but requires system restart", step_id);
+            }
+            
             log::info!("run_step: step '{}' done in {}s ({} log lines)", step_id, duration, logs.len());
             ss.status = StepStatus::Done;
             ss.logs = logs;
             ss.error = None;
-            let _ = window.emit("step_status", serde_json::json!({ "id": step_id, "status": "done" }));
+            
+            if restart_required {
+                let _ = window.emit("step_status", serde_json::json!({ 
+                    "id": step_id, 
+                    "status": "done",
+                    "restart_required": true
+                }));
+            } else {
+                let _ = window.emit("step_status", serde_json::json!({ "id": step_id, "status": "done" }));
+            }
             Ok(())
         }
         Err(err) => {
@@ -669,6 +765,7 @@ pub fn get_state(state: State<'_, Mutex<AppState>>) -> FullState {
                     error: ss.error.clone(),
                     retry_count: ss.retry_count,
                     duration_secs: ss.duration_secs,
+                    restart_required: ss.restart_required,
                 }
             } else {
                 StepResult {
@@ -678,6 +775,7 @@ pub fn get_state(state: State<'_, Mutex<AppState>>) -> FullState {
                     error: None,
                     retry_count: 0,
                     duration_secs: None,
+                    restart_required: false,
                 }
             }
         })
@@ -687,7 +785,7 @@ pub fn get_state(state: State<'_, Mutex<AppState>>) -> FullState {
         current_step_index: s.current_step_index,
         setup_started: s.setup_started,
         setup_complete: s.setup_complete,
-        config: s.config.clone(),
+        config: ConfigOutput::from(&s.config),
     }
 }
 
@@ -1128,8 +1226,8 @@ pub fn open_terminal() -> Result<(), String> {
 
 /// Returns the current user configuration.
 #[tauri::command]
-pub fn get_config(state: State<'_, Mutex<AppState>>) -> UserConfig {
-    state.lock().unwrap().config.clone()
+pub fn get_config(state: State<'_, Mutex<AppState>>) -> ConfigOutput {
+    ConfigOutput::from(&state.lock().unwrap().config)
 }
 
 /// Saves updated user configuration.
@@ -1196,6 +1294,79 @@ pub fn save_config(
 pub async fn open_url(url: String, app_handle: AppHandle) -> Result<(), String> {
     use tauri_plugin_shell::ShellExt;
     app_handle.shell().open(&url, None).map_err(|e| e.to_string())
+}
+
+/// Attempts to shutdown or restart the system (admin required on Windows)
+/// Falls back to closing the application if no admin privileges
+#[tauri::command]
+pub async fn restart_system(app_handle: AppHandle) -> Result<(), String> {
+    log::info!("restart_system: attempting system restart...");
+    
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Command;
+        
+        // Try to shutdown with restart flag
+        let output = Command::new("shutdown")
+            .args(&["/r", "/t", "10", "/c", "Dev Setup app completed. Restarting in 10 seconds..."])
+            .output();
+        
+        match output {
+            Ok(output) if output.status.success() => {
+                log::info!("System restart initiated successfully");
+                // Give user time to see the message before app closes
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                app_handle.exit(0);
+                Ok(())
+            }
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                log::warn!("Shutdown command failed (likely no admin): {}", stderr);
+                // No admin privileges - just close the app
+                log::info!("Closing application instead of restarting system");
+                app_handle.exit(0);
+                Ok(())
+            }
+            Err(e) => {
+                log::error!("Failed to execute shutdown command: {}", e);
+                // Fall back to closing app
+                app_handle.exit(0);
+                Ok(())
+            }
+        }
+    }
+    
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Command;
+        
+        // macOS restart - requires sudo
+        let output = Command::new("osascript")
+            .args(&["-e", "tell app \"System Events\" to restart"])
+            .output();
+        
+        match output {
+            Ok(_) => {
+                log::info!("System restart initiated on macOS");
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                app_handle.exit(0);
+                Ok(())
+            }
+            Err(e) => {
+                log::warn!("Failed to restart macOS: {}", e);
+                // Fall back to closing app
+                app_handle.exit(0);
+                Ok(())
+            }
+        }
+    }
+    
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        log::info!("Restart not supported on this OS - closing application");
+        app_handle.exit(0);
+        Ok(())
+    }
 }
 
 // ─── Admin Agent Commands ────────────────────────────────────────────────────
@@ -1447,7 +1618,7 @@ pub async fn save_config_profile(
 
 /// Lists all saved configuration profiles.
 #[tauri::command]
-pub async fn list_config_profiles(app_handle: AppHandle) -> Result<Vec<ConfigProfile>, String> {
+pub async fn list_config_profiles(app_handle: AppHandle) -> Result<Vec<ConfigProfileOutput>, String> {
     let profiles_dir = get_profiles_dir_path(&app_handle)?;
 
     let mut profiles = Vec::new();
@@ -1463,7 +1634,7 @@ pub async fn list_config_profiles(app_handle: AppHandle) -> Result<Vec<ConfigPro
             match fs::read_to_string(&path) {
                 Ok(content) => {
                     match serde_json::from_str::<ConfigProfile>(&content) {
-                        Ok(profile) => profiles.push(profile),
+                        Ok(profile) => profiles.push(ConfigProfileOutput::from(&profile)),
                         Err(e) => log::warn!("Failed to parse profile {}: {}", path.display(), e),
                     }
                 }
@@ -1484,7 +1655,7 @@ pub async fn load_config_profile(
     app_handle: AppHandle,
     profile_name: String,
     state: State<'_, Mutex<AppState>>,
-) -> Result<UserConfig, String> {
+) -> Result<ConfigOutput, String> {
     let profiles_dir = get_profiles_dir_path(&app_handle)?;
     let sanitized_name = sanitize_profile_name(&profile_name);
     let profile_path = profiles_dir.join(format!("{}.json", sanitized_name));
@@ -1500,13 +1671,14 @@ pub async fn load_config_profile(
         .map_err(|e| format!("Failed to parse profile: {}", e))?;
 
     // Apply to current state
-    {
+    let output = {
         let mut s = state.lock().unwrap();
         s.config = profile.config.clone();
-    }
+        ConfigOutput::from(&s.config)
+    };
 
     log::info!("Loaded config profile: '{}'", profile_name);
-    Ok(profile.config)
+    Ok(output)
 }
 
 /// Deletes a saved configuration profile.
@@ -1557,6 +1729,7 @@ pub async fn save_workflow(
     name: String,
     description: String,
     step_ids: Vec<String>,
+    settings: Option<crate::state::WorkflowSettings>,
 ) -> Result<(), String> {
     let workflows_dir = get_workflows_dir_path(&app_handle)?;
     let workflow_path = workflows_dir.join(format!("{}.json", workflow_id));
@@ -1573,6 +1746,7 @@ pub async fn save_workflow(
         step_ids,
         created_at: now,
         last_run_at: None,
+        settings,
     };
 
     let json = serde_json::to_string_pretty(&workflow)
@@ -1799,6 +1973,7 @@ pub async fn execute_workflow(
         let mut s = state.lock().unwrap();
         s.setup_complete = true;
     }
+    let _ = window.emit("setup_complete", true);
 
     // Update workflow last_run_at
     update_workflow_last_run(app_handle.clone(), workflow_id.clone()).await?;

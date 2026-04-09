@@ -101,9 +101,12 @@ fn classify_log_line(line: &str) -> LogLevel {
 }
 
 fn emit_log(window: &WebviewWindow, step_id: &str, line: &str, level: LogLevel) {
+    // 🔒 SECURITY: Redact sensitive data from logs before emitting to UI
+    let redacted_line = crate::security::redact_sensitive_log(line);
+    
     let _ = window.emit(
         "step_log",
-        LogEvent { step_id: step_id.to_string(), line: line.to_string(), level },
+        LogEvent { step_id: step_id.to_string(), line: redacted_line, level },
     );
 }
 

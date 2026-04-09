@@ -1,7 +1,10 @@
 // state.rs — Application state management
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
+
+// Import encryption functions
+use crate::security::{encrypt_sensitive, decrypt_sensitive};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -27,6 +30,8 @@ pub struct StepState {
     pub error: Option<String>,
     pub retry_count: u32,
     pub duration_secs: Option<u64>,
+    #[serde(default)]
+    pub restart_required: bool,
 }
 
 impl StepState {
@@ -38,6 +43,7 @@ impl StepState {
             error: None,
             retry_count: 0,
             duration_secs: None,
+            restart_required: false,
         }
     }
 }
@@ -48,6 +54,10 @@ pub struct UserConfig {
     pub wsl_install_dir: Option<String>,
     #[serde(default)]
     pub wsl_backup_path: Option<String>,
+    #[serde(
+        serialize_with = "serialize_encrypted_string",
+        deserialize_with = "deserialize_encrypted_string"
+    )]
     pub postgres_password: String,
     pub postgres_db_name: String,
     pub python_version: String,
@@ -58,7 +68,11 @@ pub struct UserConfig {
     pub openvpn_config_path: Option<String>,
     pub git_name: Option<String>,
     pub git_email: Option<String>,
-    #[serde(default)]
+    #[serde(
+        default,
+        serialize_with = "serialize_encrypted_option",
+        deserialize_with = "deserialize_encrypted_option"
+    )]
     pub gitlab_pat: Option<String>,
     #[serde(default)]
     pub gitlab_repo_url: Option<String>,
@@ -205,6 +219,14 @@ pub struct RunHistory {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkflowSettings {
+    #[serde(default)]
+    pub overrides: serde_json::Map<String, serde_json::Value>, // Setting overrides
+    #[serde(default)]
+    pub nullify: Vec<String>,    // Setting keys to nullify
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CustomWorkflow {
     pub id: String,              // UUID
     pub name: String,            // User-friendly workflow name
@@ -213,6 +235,8 @@ pub struct CustomWorkflow {
     pub created_at: i64,         // Unix timestamp (seconds)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_run_at: Option<i64>, // Unix timestamp of last execution
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settings: Option<WorkflowSettings>, // Optional workflow-specific settings
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -221,4 +245,57 @@ pub struct ConfigProfile {
     pub saved_at: i64,           // Unix timestamp (seconds)
     pub description: String,     // Auto-generated summary
     pub config: UserConfig,
+}
+
+// ─── Custom Serializers for Encrypted Fields ───────────────────────────────
+
+/// Serializer for Option<String> with encryption
+fn serialize_encrypted_option<S>(value: &Option<String>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    match value {
+        Some(v) if !v.is_empty() => {
+            let encrypted = encrypt_sensitive(v)
+                .map_err(serde::ser::Error::custom)?;
+            serializer.serialize_some(&encrypted)
+        }
+        _ => serializer.serialize_none(),
+    }
+}
+
+/// Deserializer for Option<String> with decryption
+fn deserialize_encrypted_option<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let opt: Option<String> = Option::deserialize(deserializer)?;
+    match opt {
+        Some(encrypted) if !encrypted.is_empty() => {
+            decrypt_sensitive(&encrypted)
+                .map(Some)
+                .map_err(serde::de::Error::custom)
+        }
+        _ => Ok(None),
+    }
+}
+
+/// Serializer for String with encryption
+fn serialize_encrypted_string<S>(value: &String, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let encrypted = encrypt_sensitive(value)
+        .map_err(serde::ser::Error::custom)?;
+    serializer.serialize_str(&encrypted)
+}
+
+/// Deserializer for String with decryption
+fn deserialize_encrypted_string<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let encrypted = String::deserialize(deserializer)?;
+    decrypt_sensitive(&encrypted)
+        .map_err(serde::de::Error::custom)
 }

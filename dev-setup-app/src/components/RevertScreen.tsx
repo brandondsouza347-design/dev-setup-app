@@ -1,8 +1,10 @@
 // components/RevertScreen.tsx — Safely revert the Windows WSL environment to clean state
 import { useState, useRef, useEffect } from 'react';
 import { AlertTriangle, RotateCcw, ChevronDown, ChevronRight, CheckCircle, XCircle, Loader, Circle, ShieldAlert, ScrollText, Trash2, FolderOpen } from 'lucide-react';
-import { open as openDialog } from '@tauri-apps/plugin-dialog';
-import type { OsInfo, SetupStep, StepResult, LogEntry, UserConfig } from '../types';
+import { open as openDialog, ask } from '@tauri-apps/plugin-dialog';
+import { invoke } from '@tauri-apps/api/core';
+import type { OsInfo, SetupStep, StepResult, LogEntry, UserConfig, AdminAgentStatus, WizardPage } from '../types';
+import { hasAdminSteps } from '../utils/adminSteps';
 
 interface Props {
   osInfo: OsInfo | null;
@@ -12,12 +14,14 @@ interface Props {
   isReverting: boolean;
   revertComplete: boolean;
   config: UserConfig;
+  adminAgentStatus: AdminAgentStatus;
   onUpdateConfig: (key: keyof UserConfig, value: string | boolean | null) => void;
   onStartRevert: () => Promise<void>;
   onRetryStep: (id: string) => Promise<void>;
   onReset: () => void;
   onStop: () => Promise<void>;
   onClearLogs: () => void;
+  onNavigate: (page: WizardPage) => void;
 }
 
 export const RevertScreen: React.FC<Props> = ({
@@ -28,12 +32,14 @@ export const RevertScreen: React.FC<Props> = ({
   isReverting,
   revertComplete,
   config,
+  adminAgentStatus,
   onUpdateConfig,
   onStartRevert,
   onRetryStep,
   onReset,
   onStop,
   onClearLogs,
+  onNavigate,
 }) => {
   const [confirmed, setConfirmed] = useState(false);
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
@@ -119,15 +125,31 @@ export const RevertScreen: React.FC<Props> = ({
           </p>
         )}
         <div className="flex gap-3 mt-8">
-          <button
-            onClick={async () => {
-              onReset();
-              await onStartRevert();
-            }}
-            className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors font-medium"
-          >
-            Restart Revert
-          </button>
+          {!anyFailed ? (
+            <button
+              onClick={async () => {
+                try {
+                  await invoke('restart_system');
+                } catch (e) {
+                  console.error('Failed to restart:', e);
+                  alert('Failed to restart system. Please restart manually.');
+                }
+              }}
+              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors font-medium"
+            >
+              Restart Computer
+            </button>
+          ) : (
+            <button
+              onClick={async () => {
+                onReset();
+                await onStartRevert();
+              }}
+              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors font-medium"
+            >
+              Restart Revert
+            </button>
+          )}
         </div>
         {/* Step summary */}
         <div className="mt-8 w-full max-w-lg text-left space-y-2">
@@ -439,7 +461,31 @@ export const RevertScreen: React.FC<Props> = ({
 
         {/* Action button */}
         <button
-          onClick={onStartRevert}
+          onClick={async () => {
+            // Check if revert contains admin-required steps and admin is enabled
+            const revertStepIds = revertSteps.map((s) => s.id);
+            const needsAdmin = osInfo?.os === 'windows' && hasAdminSteps(revertStepIds);
+            
+            if (needsAdmin && adminAgentStatus !== 'ready') {
+              const proceed = await ask(
+                'Admin privileges are required to complete the revert process.\n\n' +
+                'Some revert steps (WSL network config, hosts file, and distro removal) require elevated permissions.\n\n' +
+                'Please enable admin access in Pre-flight Checks first.',
+                {
+                  title: 'Admin Privileges Required',
+                  kind: 'warning',
+                  okLabel: 'Go to Pre-checks',
+                  cancelLabel: 'Cancel',
+                }
+              );
+              if (proceed) {
+                onNavigate('prereqs');
+              }
+              return;
+            }
+            // Proceed with revert if admin is ready or not required
+            await onStartRevert();
+          }}
           disabled={!confirmed}
           className="flex items-center justify-center gap-2 w-full py-3 px-6 bg-red-600 hover:bg-red-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-colors shadow-md"
         >

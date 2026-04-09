@@ -10,6 +10,7 @@ import { CompleteScreen } from './components/CompleteScreen';
 import { RevertScreen } from './components/RevertScreen';
 import { HistoryScreen } from './components/HistoryScreen';
 import { WorkflowScreen } from './components/WorkflowScreen';
+import { CustomWorkflowProgress } from './components/CustomWorkflowProgress';
 
 function App() {
   const setup = useSetup();
@@ -133,12 +134,14 @@ function App() {
               isReverting={setup.isReverting}
               revertComplete={setup.revertComplete}
               config={setup.config}
+              adminAgentStatus={setup.adminAgentStatus}
               onUpdateConfig={setup.updateConfig}
               onStartRevert={setup.startRevert}
               onRetryStep={setup.retryRevertStep}
               onReset={setup.resetRevert}
               onStop={setup.stopSetup}
               onClearLogs={setup.clearLogs}
+              onNavigate={setup.setPage}
             />
           </div>
         )}
@@ -157,8 +160,28 @@ function App() {
           <div className="h-full overflow-hidden flex flex-col">
             <WorkflowScreen
               steps={setup.steps}
+              config={setup.config}
               onBack={() => setup.setPage('welcome')}
               onExecuteWorkflow={setup.executeWorkflow}
+            />
+          </div>
+        )}
+
+        {setup.page === 'custom-progress' && (
+          <div className="h-full overflow-hidden flex flex-col">
+            <CustomWorkflowProgress
+              workflow={setup.currentWorkflow}
+              workflowSteps={setup.workflowSteps}
+              stepResults={setup.workflowStepResults}
+              logs={setup.logs}
+              config={setup.config}
+              currentStepIndex={setup.currentWorkflowStepIndex}
+              isRunning={setup.isRunningWorkflow}
+              workflowComplete={setup.workflowComplete}
+              onRetry={setup.retryStep}
+              onStop={setup.stopSetup}
+              onClearLogs={setup.clearLogs}
+              onBack={() => setup.setPage('workflow')}
             />
           </div>
         )}

@@ -2,10 +2,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   CheckCircle2, XCircle, Loader2, SkipForward, RotateCcw,
-  ChevronDown, ChevronRight, Terminal, Clock, ScrollText, Undo2, StopCircle, Trash2
+  ChevronDown, ChevronRight, Terminal, Clock, ScrollText, Undo2, StopCircle, Trash2, Power
 } from 'lucide-react';
 import type { SetupStep, StepResult, LogEntry, WizardPage } from '../types';
 import { StepBadge } from './StepBadge';
+import { invoke } from '@tauri-apps/api/core';
 
 interface Props {
   steps: SetupStep[];
@@ -99,6 +100,23 @@ export const ProgressDashboard: React.FC<Props> = ({
       await onRevertStep(id);
     } finally {
       setReverting(null);
+    }
+  };
+
+  const handleRestartSystem = async () => {
+    const confirmed = window.confirm(
+      'Your system will restart in 10 seconds.\n\n' +
+      'Please save all your work before proceeding.\n\n' +
+      'After restart, re-launch this application to continue setup.'
+    );
+    
+    if (confirmed) {
+      try {
+        await invoke('restart_system');
+      } catch (err) {
+        console.error('Failed to restart system:', err);
+        alert('Failed to restart system. Please restart manually.');
+      }
     }
   };
 
@@ -299,6 +317,32 @@ export const ProgressDashboard: React.FC<Props> = ({
                   <div ref={bottomRef} />
                 </div>
               </div>
+
+              {/* Restart System Button - shown when WSL requires restart */}
+              {result?.restart_required && status === 'done' && (
+                <div className="p-4 border-t border-orange-200 dark:border-orange-900 bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-950/30 dark:to-red-950/30">
+                  <div className="flex items-start gap-3">
+                    <Power className="w-5 h-5 text-orange-600 dark:text-orange-400 shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <h4 className="text-sm font-semibold text-orange-900 dark:text-orange-200 mb-1">
+                        System Restart Required
+                      </h4>
+                      <p className="text-xs text-orange-700 dark:text-orange-300 mb-3">
+                        WSL features have been enabled for the first time. Windows must restart before WSL can be used.
+                        After restarting, re-launch this application to continue setup.
+                      </p>
+                      <button
+                        onClick={handleRestartSystem}
+                        className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white text-sm font-medium rounded-lg shadow-md hover:shadow-lg transition-all duration-200"
+                      >
+                        <Power className="w-4 h-4" />
+                        Restart System Now
+                        <span className="text-xs opacity-90">(10s countdown)</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}

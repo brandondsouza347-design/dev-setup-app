@@ -22,6 +22,22 @@ export const SettingsScreen: React.FC<Props> = ({ config, osInfo, onUpdate, onSa
 
   const isWindows = osInfo?.os === 'windows';
 
+  // Check if backup path and install path overlap (dangerous - backup will be deleted on revert)
+  const checkPathOverlap = (): boolean => {
+    if (!isWindows || !config.wsl_backup_path || !config.wsl_install_dir) return false;
+    
+    const normalizePath = (path: string) => path.toLowerCase().replace(/\\/g, '/').replace(/\/+$/, '');
+    const backup = normalizePath(config.wsl_backup_path);
+    const install = normalizePath(config.wsl_install_dir);
+    
+    // Check if either path is inside the other
+    return backup === install || 
+           backup.startsWith(install + '/') || 
+           install.startsWith(backup + '/');
+  };
+
+  const hasPathOverlap = checkPathOverlap();
+
   // Load profiles on mount
   useEffect(() => {
     loadProfiles();
@@ -44,6 +60,17 @@ export const SettingsScreen: React.FC<Props> = ({ config, osInfo, onUpdate, onSa
   };
 
   const handleSave = async () => {
+    // Warn about path overlap before saving
+    if (hasPathOverlap) {
+      const proceed = confirm(
+        'WARNING: Your backup directory overlaps with the install directory.\\n\\n' +
+        'During revert, backup files may be deleted along with the WSL installation!\\n\\n' +
+        'It is STRONGLY recommended to choose a different backup location.\\n\\n' +
+        'Do you want to save anyway? (Not recommended)'
+      );
+      if (!proceed) return;
+    }
+    
     setSaving(true);
     try {
       await onSave(config);
@@ -70,6 +97,16 @@ export const SettingsScreen: React.FC<Props> = ({ config, osInfo, onUpdate, onSa
     });
     if (typeof selected === 'string') {
       update('wsl_install_dir', selected);
+    }
+  };
+
+  const browseBackupDir = async () => {
+    const selected = await openDialog({
+      title: 'Select WSL backup storage directory',
+      directory: true,
+    });
+    if (typeof selected === 'string') {
+      update('wsl_backup_path', selected);
     }
   };
 
@@ -218,6 +255,34 @@ export const SettingsScreen: React.FC<Props> = ({ config, osInfo, onUpdate, onSa
                   <FolderOpen className="w-4 h-4" />
                 </button>
               </div>
+            </Field>
+            <Field label="WSL Backup Directory" hint="Where to store backup TAR files during revert (must be DIFFERENT from install dir)">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={config.wsl_backup_path ?? ''}
+                  onChange={(e) => update('wsl_backup_path', e.target.value || null)}
+                  className="input flex-1"
+                  placeholder="C:\Users\you\WSL_Backup"
+                />
+                <button onClick={browseBackupDir} className="btn-secondary flex items-center gap-1 px-3">
+                  <FolderOpen className="w-4 h-4" />
+                </button>
+              </div>
+              {hasPathOverlap && (
+                <div className="mt-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-800 rounded-lg flex items-start gap-2">
+                  <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                  <div className="text-sm">
+                    <p className="font-semibold text-red-800 dark:text-red-200 mb-1">⚠ Path Conflict Detected</p>
+                    <p className="text-red-700 dark:text-red-300">
+                      Backup directory overlaps with install directory. During revert, your backup files may be deleted!
+                    </p>
+                    <p className="text-red-700 dark:text-red-300 mt-1 font-medium">
+                      Please choose a different backup location (e.g., C:\Backups\WSL or D:\WSL_Backup)
+                    </p>
+                  </div>
+                </div>
+              )}
             </Field>
             <Field label="WSL Default User" hint="Linux username to log in as when WSL starts (default: ubuntu)">
               <input

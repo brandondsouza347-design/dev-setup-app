@@ -4,6 +4,7 @@
 mod admin_agent;
 mod commands;
 mod orchestrator;
+mod security;
 mod state;
 
 use state::{AppState, CancelState};
@@ -48,6 +49,7 @@ fn main() {
             commands::is_admin_agent_ready,
             commands::shutdown_admin_agent,
             commands::open_url,
+            commands::restart_system,
             commands::stop_setup,
             commands::save_run_history,
             commands::load_run_history,

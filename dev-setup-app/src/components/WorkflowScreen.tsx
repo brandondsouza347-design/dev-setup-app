@@ -3,23 +3,32 @@ import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
   ChevronLeft, Plus, Play, Save, Trash2, Edit2,
-  X, Check, AlertCircle, Clock
+  X, Check, AlertCircle, Clock, Shield, Settings as SettingsIcon
 } from 'lucide-react';
-import type { CustomWorkflow, SetupStep } from '../types';
+import type { CustomWorkflow, SetupStep, UserConfig } from '../types';
+import type { WorkflowSettings } from '../utils/settingsMerge';
+import { isAdminStep, hasAdminSteps } from '../utils/adminSteps';
+import { WorkflowSettingsEditor } from './WorkflowSettingsEditor';
 
 interface Props {
   steps: SetupStep[];
+  config: UserConfig;
   onBack: () => void;
   onExecuteWorkflow: (workflow: CustomWorkflow) => void;
 }
 
-export const WorkflowScreen: React.FC<Props> = ({ steps, onBack, onExecuteWorkflow }) => {
+export const WorkflowScreen: React.FC<Props> = ({ steps, config, onBack, onExecuteWorkflow }) => {
   const [workflows, setWorkflows] = useState<CustomWorkflow[]>([]);
   const [selectedSteps, setSelectedSteps] = useState<string[]>([]);
   const [workflowName, setWorkflowName] = useState('');
   const [workflowDescription, setWorkflowDescription] = useState('');
+  const [workflowSettings, setWorkflowSettings] = useState<WorkflowSettings>({
+    overrides: {},
+    nullify: [],
+  });
   const [editingWorkflow, setEditingWorkflow] = useState<CustomWorkflow | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [activeTab, setActiveTab] = useState<'steps' | 'settings'>('steps');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -49,6 +58,7 @@ export const WorkflowScreen: React.FC<Props> = ({ steps, onBack, onExecuteWorkfl
         name: workflowName.trim(),
         description: workflowDescription.trim(),
         stepIds: selectedSteps,
+        settings: workflowSettings,
       });
 
       await loadWorkflows();
@@ -77,6 +87,7 @@ export const WorkflowScreen: React.FC<Props> = ({ steps, onBack, onExecuteWorkfl
     setWorkflowName(workflow.name);
     setWorkflowDescription(workflow.description);
     setSelectedSteps(workflow.step_ids);
+    setWorkflowSettings(workflow.settings || { overrides: {}, nullify: [] });
     setShowCreateForm(true);
   };
 
@@ -105,8 +116,10 @@ export const WorkflowScreen: React.FC<Props> = ({ steps, onBack, onExecuteWorkfl
     setWorkflowName('');
     setWorkflowDescription('');
     setSelectedSteps([]);
+    setWorkflowSettings({ overrides: {}, nullify: [] });
     setEditingWorkflow(null);
     setShowCreateForm(false);
+    setActiveTab('steps');
   };
 
   const getStepById = (stepId: string) => steps.find(s => s.id === stepId);
@@ -150,7 +163,8 @@ export const WorkflowScreen: React.FC<Props> = ({ steps, onBack, onExecuteWorkfl
             </button>
           </div>
 
-          <div className="space-y-4">
+          {/* Basic Info */}
+          <div className="space-y-4 mb-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Workflow Name *
@@ -176,97 +190,153 @@ export const WorkflowScreen: React.FC<Props> = ({ steps, onBack, onExecuteWorkfl
                 rows={2}
               />
             </div>
+          </div>
 
-            {/* Step Selection */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Select Steps (click to add/remove)
-              </label>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-80 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-                {steps.map((step) => (
-                  <button
-                    key={step.id}
-                    onClick={() => toggleStepSelection(step.id)}
-                    className={`text-left px-3 py-2 rounded-lg border transition-colors ${
-                      selectedSteps.includes(step.id)
-                        ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 text-blue-700 dark:text-blue-300'
-                        : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      {selectedSteps.includes(step.id) && <Check className="w-4 h-4" />}
-                      <span className="text-sm font-medium">{step.title}</span>
-                    </div>
-                  </button>
-                ))}
-              </div>
+          {/* Tabs */}
+          <div className="border-b border-gray-200 dark:border-gray-700 mb-4">
+            <div className="flex gap-4">
+              <button
+                onClick={() => setActiveTab('steps')}
+                className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+                  activeTab === 'steps'
+                    ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
+                }`}
+              >
+                Steps ({selectedSteps.length})
+              </button>
+              <button
+                onClick={() => setActiveTab('settings')}
+                className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors flex items-center gap-2 ${
+                  activeTab === 'settings'
+                    ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
+                }`}
+              >
+                <SettingsIcon className="w-4 h-4" />
+                Settings
+                {(workflowSettings.overrides && Object.keys(workflowSettings.overrides).length > 0) && (
+                  <span className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-xs rounded-full">
+                    {Object.keys(workflowSettings.overrides).length}
+                  </span>
+                )}
+              </button>
             </div>
+          </div>
 
-            {/* Selected Steps Order */}
-            {selectedSteps.length > 0 && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Execution Order (use arrows to reorder)
-                </label>
-                <div className="space-y-2">
-                  {selectedSteps.map((stepId, index) => {
-                    const step = getStepById(stepId);
-                    return step ? (
-                      <div
-                        key={stepId}
-                        className="flex items-center gap-2 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600"
-                      >
-                        <span className="text-sm font-medium text-gray-500 dark:text-gray-400 w-8">
-                          {index + 1}.
-                        </span>
-                        <span className="flex-1 text-sm text-gray-900 dark:text-white">
-                          {step.title}
-                        </span>
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => moveStep(index, 'up')}
-                            disabled={index === 0}
-                            className="p-1 text-gray-500 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
-                          >
-                            ↑
-                          </button>
-                          <button
-                            onClick={() => moveStep(index, 'down')}
-                            disabled={index === selectedSteps.length - 1}
-                            className="p-1 text-gray-500 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
-                          >
-                            ↓
-                          </button>
-                          <button
-                            onClick={() => toggleStepSelection(stepId)}
-                            className="p-1 text-red-500 hover:text-red-700"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    ) : null;
-                  })}
+          {/* Tab Content */}
+          <div className="space-y-4">
+            {activeTab === 'steps' && (
+              <>
+                    {/* Step Selection */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Select Steps (click to add/remove)
+                  </label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-80 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                    {steps.map((step) => {
+                      const requiresAdmin = isAdminStep(step.id);
+                      return (
+                        <button
+                          key={step.id}
+                          onClick={() => toggleStepSelection(step.id)}
+                          className={`text-left px-3 py-2 rounded-lg border transition-colors ${
+                            selectedSteps.includes(step.id)
+                              ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 text-blue-700 dark:text-blue-300'
+                              : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            {selectedSteps.includes(step.id) && <Check className="w-4 h-4" />}
+                            <span className="text-sm font-medium flex-1">{step.title}</span>
+                            {requiresAdmin && (
+                              <span title="Requires admin privileges">
+                                <Shield className="w-4 h-4 text-amber-500" />
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
+
+                {/* Selected Steps Order */}
+                {selectedSteps.length > 0 && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Execution Order (use arrows to reorder)
+                    </label>
+                    <div className="space-y-2">
+                      {selectedSteps.map((stepId, index) => {
+                        const step = getStepById(stepId);
+                        return step ? (
+                          <div
+                            key={stepId}
+                            className="flex items-center gap-2 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600"
+                          >
+                            <span className="text-sm font-medium text-gray-500 dark:text-gray-400 w-8">
+                              {index + 1}.
+                            </span>
+                            <span className="flex-1 text-sm text-gray-900 dark:text-white">
+                              {step.title}
+                            </span>
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => moveStep(index, 'up')}
+                                disabled={index === 0}
+                                className="p-1 text-gray-500 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                              >
+                                ↑
+                              </button>
+                              <button
+                                onClick={() => moveStep(index, 'down')}
+                                disabled={index === selectedSteps.length - 1}
+                                className="p-1 text-gray-500 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                              >
+                                ↓
+                              </button>
+                              <button
+                                onClick={() => toggleStepSelection(stepId)}
+                                className="p-1 text-red-500 hover:text-red-700"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        ) : null;
+                      })}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
 
-            <div className="flex items-center gap-2 pt-4">
-              <button
-                onClick={handleSaveWorkflow}
-                disabled={loading || !workflowName.trim() || selectedSteps.length === 0}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white rounded-lg transition-colors"
-              >
-                <Save className="w-4 h-4" />
-                {loading ? 'Saving...' : 'Save Workflow'}
-              </button>
-              <button
-                onClick={resetForm}
-                className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
+            {activeTab === 'settings' && (
+              <WorkflowSettingsEditor
+                stepIds={selectedSteps}
+                globalConfig={config}
+                workflowSettings={workflowSettings}
+                onUpdateSettings={setWorkflowSettings}
+              />
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 pt-4">
+            <button
+              onClick={handleSaveWorkflow}
+              disabled={loading || !workflowName.trim() || selectedSteps.length === 0}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white rounded-lg transition-colors"
+            >
+              <Save className="w-4 h-4" />
+              {loading ? 'Saving...' : 'Save Workflow'}
+            </button>
+            <button
+              onClick={resetForm}
+              className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            >
+              Cancel
+            </button>
           </div>
         </div>
       )}
@@ -286,30 +356,47 @@ export const WorkflowScreen: React.FC<Props> = ({ steps, onBack, onExecuteWorkfl
           </div>
         ) : (
           <div className="space-y-4">
-            {workflows.map((workflow) => (
-              <div
-                key={workflow.id}
-                className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5 hover:shadow-md transition-shadow"
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex-1">
-                    <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
-                      {workflow.name}
-                    </h4>
-                    {workflow.description && (
-                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                        {workflow.description}
-                      </p>
-                    )}
-                    <div className="flex items-center gap-4 mt-2 text-xs text-gray-500 dark:text-gray-400">
-                      <span>{workflow.step_ids.length} steps</span>
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        Created {new Date(workflow.created_at * 1000).toLocaleDateString()}
-                      </span>
-                      {workflow.last_run_at && (
-                        <span>Last run {new Date(workflow.last_run_at * 1000).toLocaleDateString()}</span>
+            {workflows.map((workflow) => {
+              const requiresAdmin = hasAdminSteps(workflow.step_ids);
+              return (
+                <div
+                  key={workflow.id}
+                  className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5 hover:shadow-md transition-shadow"
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
+                          {workflow.name}
+                        </h4>
+                        {requiresAdmin && (
+                          <span className="flex items-center gap-1 px-2 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-xs font-medium rounded-full">
+                            <Shield className="w-3 h-3" />
+                            Requires Admin
+                          </span>
+                        )}
+                        {workflow.settings && Object.keys(workflow.settings.overrides).length > 0 && (
+                          <span className="flex items-center gap-1 px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-xs font-medium rounded-full">
+                            <SettingsIcon className="w-3 h-3" />
+                            {Object.keys(workflow.settings.overrides).length} override{Object.keys(workflow.settings.overrides).length !== 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </div>
+                      {workflow.description && (
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                          {workflow.description}
+                        </p>
                       )}
+                      <div className="flex items-center gap-4 mt-2 text-xs text-gray-500 dark:text-gray-400">
+                        <span>{workflow.step_ids.length} steps</span>
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          Created {new Date(workflow.created_at * 1000).toLocaleDateString()}
+                        </span>
+                        {workflow.last_run_at && (
+                          <span>Last run {new Date(workflow.last_run_at * 1000).toLocaleDateString()}</span>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -336,25 +423,25 @@ export const WorkflowScreen: React.FC<Props> = ({ steps, onBack, onExecuteWorkfl
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
-                </div>
 
-                {/* Step List Preview */}
-                <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Steps:</p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                    {workflow.step_ids.map((stepId, idx) => {
-                      const step = getStepById(stepId);
-                      return step ? (
-                        <div key={stepId} className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
-                          <span className="text-gray-400">{idx + 1}.</span>
-                          <span className="truncate">{step.title}</span>
-                        </div>
-                      ) : null;
-                    })}
+                  {/* Step List Preview */}
+                  <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Steps:</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                      {workflow.step_ids.map((stepId, idx) => {
+                        const step = getStepById(stepId);
+                        return step ? (
+                          <div key={stepId} className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+                            <span className="text-gray-400">{idx + 1}.</span>
+                            <span className="truncate">{step.title}</span>
+                          </div>
+                        ) : null;
+                      })}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

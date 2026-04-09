@@ -1,5 +1,5 @@
 # setup_windows_hosts.ps1
-# Add 127.0.0.1 tenant entries to the Windows hosts file if not already present
+# Update Windows hosts file with localhost entries including tenant name
 # Must run as Administrator
 #Requires -RunAsAdministrator
 $ErrorActionPreference = "Stop"
@@ -15,11 +15,9 @@ if ([string]::IsNullOrWhiteSpace($tenantName)) {
 
 Write-Host "==> Using tenant name: $tenantName"
 
-$entries = @(
-    "127.0.0.1 t3582.local"
-    "127.0.0.1 $tenantName"
-    "127.0.0.1 localhost"
-)
+# Define the localhost entries with tenant name
+$ipv4Entry = "127.0.0.1       localhost $tenantName"
+$ipv6Entry = "::1             localhost $tenantName"
 
 Write-Host "==> setup_windows_hosts: checking $hostsPath..."
 
@@ -28,30 +26,49 @@ if (-not (Test-Path $hostsPath)) {
     exit 0
 }
 
-$currentContent = Get-Content $hostsPath -Raw
+# Read current content
+$currentLines = Get-Content $hostsPath
 
-$addedAny = $false
+# Track if we need to add entries
+$hasIPv4Entry = $false
+$hasIPv6Entry = $false
 
-foreach ($entry in $entries) {
-    # Extract just the hostname part to check for duplicates
-    $parts = $entry -split "\s+", 2
-    $hostname = $parts[1]
-
-    if ($currentContent -match [regex]::Escape($hostname)) {
-        Write-Host "✓ '$hostname' already in hosts file — skipping"
-    } else {
-        Write-Host "  Adding: $entry"
-        Add-Content -Path $hostsPath -Value $entry -Encoding ASCII
-        Write-Host "✓ Added: $entry"
-        $addedAny = $true
+# Check if entries already exist
+foreach ($line in $currentLines) {
+    if ($line -match "^\s*127\.0\.0\.1\s+localhost\s+$tenantName\s*$") {
+        $hasIPv4Entry = $true
+    }
+    if ($line -match "^\s*::1\s+localhost\s+$tenantName\s*$") {
+        $hasIPv6Entry = $true
     }
 }
 
+$addedAny = $false
+
+# Add IPv4 entry if not present
+if (-not $hasIPv4Entry) {
+    Write-Host "  Adding IPv4 entry: $ipv4Entry"
+    Add-Content -Path $hostsPath -Value $ipv4Entry -Encoding ASCII
+    Write-Host "✓ Added IPv4 localhost entry with tenant name"
+    $addedAny = $true
+} else {
+    Write-Host "✓ IPv4 localhost entry with '$tenantName' already present"
+}
+
+# Add IPv6 entry if not present
+if (-not $hasIPv6Entry) {
+    Write-Host "  Adding IPv6 entry: $ipv6Entry"
+    Add-Content -Path $hostsPath -Value $ipv6Entry -Encoding ASCII
+    Write-Host "✓ Added IPv6 localhost entry with tenant name"
+    $addedAny = $true
+} else {
+    Write-Host "✓ IPv6 localhost entry with '$tenantName' already present"
+}
+
 if (-not $addedAny) {
-    Write-Host "✓ All required hosts entries already present — nothing to do"
+    Write-Host "✓ All required localhost entries already present — nothing to do"
 } else {
     Write-Host ""
-    Write-Host "✓ Windows hosts file updated"
-    Write-Host "  NOTE: entries added for .local tenant access"
-    Write-Host "  Update t3582 to match your actual tenant ID if different"
+    Write-Host "✓ Windows hosts file updated successfully"
+    Write-Host "  Format: 127.0.0.1 and ::1 point to 'localhost $tenantName'"
 }

@@ -38,6 +38,13 @@ interface UseSetupReturn {
   revertResults: Record<string, StepResult>;
   isReverting: boolean;
   revertComplete: boolean;
+  // Workflow
+  currentWorkflow: CustomWorkflow | null;
+  workflowSteps: SetupStep[];
+  workflowStepResults: Record<string, StepResult>;
+  isRunningWorkflow: boolean;
+  workflowComplete: boolean;
+  currentWorkflowStepIndex: number;
   // Admin agent
   adminAgentStatus: AdminAgentStatus;
   adminAgentError: string | null;
@@ -123,6 +130,14 @@ export function useSetup(): UseSetupReturn {
   const [isReverting, setIsReverting] = useState(false);
   const [revertComplete, setRevertComplete] = useState(false);
   const revertStepIdsRef = useRef<Set<string>>(new Set());
+
+  // Workflow execution state
+  const [currentWorkflow, setCurrentWorkflow] = useState<CustomWorkflow | null>(null);
+  const [workflowSteps, setWorkflowSteps] = useState<SetupStep[]>([]);
+  const [workflowStepResults, setWorkflowStepResults] = useState<Record<string, StepResult>>({});
+  const [isRunningWorkflow, setIsRunningWorkflow] = useState(false);
+  const [workflowComplete, setWorkflowComplete] = useState(false);
+  const [currentWorkflowStepIndex, setCurrentWorkflowStepIndex] = useState(0);
 
   const unlistenRefs = useRef<UnlistenFn[]>([]);
 
@@ -355,16 +370,38 @@ export function useSetup(): UseSetupReturn {
   }, []);
 
   const executeWorkflow = useCallback(async (workflow: CustomWorkflow) => {
-    setIsRunning(true);
-    setSetupStarted(true);
-    setPage('progress');
+    // Filter steps to only include those in the workflow
+    const filteredSteps = steps.filter((step) => workflow.step_ids.includes(step.id));
+    // Order them according to workflow step order
+    const orderedSteps = workflow.step_ids
+      .map((id) => filteredSteps.find((s) => s.id === id))
+      .filter((s): s is SetupStep => s !== undefined);
+
+    setCurrentWorkflow(workflow);
+    setWorkflowSteps(orderedSteps);
+    setWorkflowStepResults({});
+    setWorkflowComplete(false);
+    setCurrentWorkflowStepIndex(0);
+    setIsRunningWorkflow(true);
+    setPage('custom-progress');
+
     try {
-      await invoke('execute_workflow', { workflowId: workflow.id });
+      // Merge workflow settings with global config (workflow settings take priority)
+      // Note: mergeWorkflowSettings will be imported when start_workflow is implemented
+      // const mergedConfig = mergeWorkflowSettings(config, workflow.settings);
+      
+      // TODO: Backend command start_workflow needs to be implemented
+      // It should accept: workflowId, mergedConfig
+      // The merged config should be used instead of global config during workflow execution
+      await invoke('start_workflow', { 
+        workflowId: workflow.id,
+        // When implemented, pass: config: mergedConfig
+      });
     } catch (e) {
       console.error('Workflow execution error:', e);
-      setIsRunning(false);
+      setIsRunningWorkflow(false);
     }
-  }, []);
+  }, [steps]);
 
   const retryStep = useCallback(async (id: string) => {
     setIsRunning(true);
@@ -534,6 +571,12 @@ export function useSetup(): UseSetupReturn {
     revertResults,
     isReverting,
     revertComplete,
+    currentWorkflow,
+    workflowSteps,
+    workflowStepResults,
+    isRunningWorkflow,
+    workflowComplete,
+    currentWorkflowStepIndex,
     setPage,
     runPrereqCheck,
     handlePrereqAction,
