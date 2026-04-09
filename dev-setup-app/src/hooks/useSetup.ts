@@ -99,6 +99,8 @@ export function useSetup(): UseSetupReturn {
     skip_already_installed: false,
     skip_wsl_backup: false,
     openvpn_config_path: null,
+    tunnelblick_installer_path: null,
+    vpn_method: null,
     git_name: null,
     git_email: null,
     gitlab_pat: null,

@@ -50,7 +50,7 @@ export const WorkflowScreen: React.FC<Props> = ({ steps, config, onBack, onExecu
   const createMacVPNTemplate = async () => {
     setLoading(true);
     try {
-      const workflowId = await invoke<string>('create_macos_vpn_workflow_template');
+      await invoke<string>('create_macos_vpn_workflow_template');
       await loadWorkflows();
       alert('macOS VPN workflow template created! You can now execute or customize it.');
     } catch (err) {
