@@ -55,48 +55,80 @@ echo "    • Requires admin password (will prompt via dialog)"
 echo ""
 
 echo "[3/3] Running Homebrew installation script..."
-echo "  → A macOS dialog will appear asking for your admin password"
+echo "  → Two dialogs will appear: admin username then admin password"
+echo "  Note: On corporate Macs the admin account (e.g. localadmin) differs"
+echo "        from your login account ($(whoami))"
 echo ""
 
-# Create a GUI password helper for sudo authentication
-ASKPASS_SCRIPT=$(mktemp)
-cat > "$ASKPASS_SCRIPT" << 'ASKPASS_EOF'
-#!/bin/bash
-osascript -e 'display dialog "Homebrew installation requires administrator privileges to create directories.\n\nEnter your password:" default answer "" with title "Homebrew Installation" with icon caution with hidden answer' -e 'text returned of result' 2>/dev/null
-ASKPASS_EOF
-chmod +x "$ASKPASS_SCRIPT"
-export SUDO_ASKPASS="$ASKPASS_SCRIPT"
+# ── Collect admin username ───────────────────────────────────────────────────
+ADMIN_USER=$(osascript \
+  -e 'display dialog "Homebrew requires administrator privileges to install.\n\nEnter the local admin username:\n(usually: localadmin)" default answer "localadmin" with title "Homebrew Installation — Admin Username" buttons {"Cancel", "Continue"} default button "Continue"' \
+  -e 'text returned of result' 2>/dev/null) || true
 
-# Pre-authenticate sudo to warm the credential cache (triggers GUI dialog).
-# Homebrew hard-codes /usr/bin/sudo with -n (non-interactive) internally, so it
-# requires the cache to already be warm — it cannot prompt on its own.
-echo "  → Requesting admin credentials via dialog..."
-if ! /usr/bin/sudo -A -v 2>&1; then
-    rm -f "$ASKPASS_SCRIPT"
-    echo ""
-    echo "  ✗ Admin authentication failed"
-    echo "  Please ensure your account ($(whoami)) has administrator privileges"
+if [ -z "$ADMIN_USER" ]; then
+    echo "  ✗ Installation cancelled — no admin username provided"
     exit 1
 fi
-echo "  ✓ Admin credentials accepted — starting Homebrew installation"
-echo "  (This may take 3-5 minutes)"
+echo "  → Admin username entered: $ADMIN_USER"
+
+# ── Collect admin password ───────────────────────────────────────────────────
+ADMIN_PASS=$(osascript \
+  -e "display dialog \"Enter the password for admin account '$ADMIN_USER':\" default answer \"\" with title \"Homebrew Installation — Admin Password\" with icon caution buttons {\"Cancel\", \"OK\"} default button \"OK\" with hidden answer" \
+  -e 'text returned of result' 2>/dev/null) || true
+
+if [ -z "$ADMIN_PASS" ]; then
+    echo "  ✗ Installation cancelled — no password provided"
+    exit 1
+fi
+
+# ── Verify credentials before making any system changes ─────────────────────
+echo "  → Verifying admin credentials..."
+if ! osascript -e "do shell script \"echo verified\" user name \"$ADMIN_USER\" password \"$ADMIN_PASS\" with administrator privileges" > /dev/null 2>&1; then
+    echo "  ✗ Admin credentials rejected — wrong username or password"
+    echo "  Please re-run and check credentials for account: $ADMIN_USER"
+    exit 1
+fi
+echo "  ✓ Admin credentials verified"
+
+# ── Grant temporary NOPASSWD sudo to current user ───────────────────────────
+# Homebrew must run as the regular user but its installer hard-codes
+# /usr/bin/sudo -n (non-interactive). We add a scoped NOPASSWD sudoers entry
+# so those calls succeed, then remove it via trap on any exit.
+CURRENT_USER=$(whoami)
+SUDOERS_FILE="/etc/sudoers.d/brew_install_$$"
+
+cleanup_sudoers() {
+    osascript -e "do shell script \"rm -f '$SUDOERS_FILE'\" user name \"$ADMIN_USER\" password \"$ADMIN_PASS\" with administrator privileges" > /dev/null 2>&1 || true
+    echo "  ✓ Temporary install permissions removed"
+}
+trap cleanup_sudoers EXIT
+
+echo "  → Granting temporary install permissions to $CURRENT_USER..."
+SUDOERS_LINE="$CURRENT_USER ALL=(ALL) NOPASSWD:ALL"
+if ! osascript -e "do shell script \"printf '%s\n' '$SUDOERS_LINE' > '$SUDOERS_FILE' && chmod 440 '$SUDOERS_FILE' && visudo -cf '$SUDOERS_FILE'\" user name \"$ADMIN_USER\" password \"$ADMIN_PASS\" with administrator privileges" > /dev/null 2>&1; then
+    echo "  ✗ Failed to create temporary sudoers entry"
+    echo "  Account '$ADMIN_USER' may not have full admin rights"
+    exit 1
+fi
+echo "  ✓ Temporary permissions granted (will be removed after installation)"
+echo ""
+echo "  Starting Homebrew installation — this may take 3-5 minutes..."
 echo ""
 
-# Run Homebrew installer as the regular user (not root!).
-# The sudo credential cache is now warm so Homebrew's internal sudo calls succeed.
+# ── Run Homebrew as regular user (NOPASSWD entry makes sudo work) ─────────────
 if NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" 2>&1; then
-    rm -f "$ASKPASS_SCRIPT"
+    # trap handles sudoers cleanup on EXIT
     echo ""
     echo "  ✓ Homebrew core installation complete"
 else
-    rm -f "$ASKPASS_SCRIPT"
+    # trap handles sudoers cleanup on EXIT
     echo ""
     echo "  ✗ Homebrew installation failed"
     echo ""
     echo "  Common issues:"
-    echo "    • Network connectivity (check internet connection)"
+    echo "    • Incorrect admin credentials (re-run with correct username/password)"
+    echo "    • Network connectivity problem (check internet connection)"
     echo "    • Disk space (need ~1GB free)"
-    echo "    • sudo credentials expired mid-install (installation took >15 min)"
     echo ""
     echo "  Manual installation:"
     echo "    1. Open Terminal"
