@@ -39,6 +39,8 @@ fn main() {
             commands::reset_state,
             commands::check_prerequisites,
             commands::install_openvpn_prereq,
+            commands::install_xcode_clt_prereq,
+            commands::install_homebrew_prereq,
             commands::connect_vpn_prereq,
             commands::open_terminal,
             commands::get_config,
@@ -81,13 +83,13 @@ fn main() {
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 log::info!("Window close requested - cleaning up resources...");
-                
+
                 // Cancel any running operations
                 if let Some(cancel_state) = window.app_handle().try_state::<CancelState>() {
                     cancel_state.cancel();
                     log::info!("Cancelled running operations");
                 }
-                
+
                 // Shutdown admin agent if running
                 if let Some(agent_state) = window.app_handle().try_state::<admin_agent::AdminAgentState>() {
                     if agent_state.is_ready() {
@@ -99,7 +101,7 @@ fn main() {
                         log::info!("Admin agent shutdown complete");
                     }
                 }
-                
+
                 log::info!("Cleanup complete - allowing window to close");
             }
         })

@@ -1327,6 +1327,90 @@ pub async fn install_openvpn_prereq(
     }
 }
 
+/// Executes the Xcode Command Line Tools installation as a pre-check action (macOS only).
+#[tauri::command]
+pub async fn install_xcode_clt_prereq(
+    window: WebviewWindow,
+    app_handle: AppHandle,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<(), String> {
+    log::info!("install_xcode_clt_prereq: executing xcode_clt for macOS");
+    emit_frontend_log(&window, "__prereq_action__", "▶ Install Xcode CLT", "info");
+    emit_frontend_log(&window, "__prereq_action__", "Installing Xcode Command Line Tools (requires admin password)", "info");
+
+    // Create a minimal SetupStep for script execution
+    let step = SetupStep {
+        id: "xcode_clt".to_string(),
+        title: "Install Xcode Command Line Tools".to_string(),
+        description: "Installing Xcode CLT required for compiling software on macOS".to_string(),
+        platform: crate::orchestrator::Platform::MacOs,
+        category: crate::orchestrator::StepCategory::Prerequisites,
+        required: true,
+        estimated_minutes: 5,
+        rollback_steps: vec![],
+    };
+
+    let config = {
+        let s = state.lock().unwrap();
+        s.config.clone()
+    };
+
+    let result = execute_script_with_retry(window.clone(), app_handle.clone(), &step, &config).await;
+
+    match result {
+        Ok(_) => {
+            emit_frontend_log(&window, "__prereq_action__", "✓ Xcode Command Line Tools installed successfully", "success");
+            Ok(())
+        }
+        Err(e) => {
+            emit_frontend_log(&window, "__prereq_action__", &format!("✗ Installation failed: {}", e), "error");
+            Err(e)
+        }
+    }
+}
+
+/// Executes the Homebrew installation as a pre-check action (macOS only).
+#[tauri::command]
+pub async fn install_homebrew_prereq(
+    window: WebviewWindow,
+    app_handle: AppHandle,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<(), String> {
+    log::info!("install_homebrew_prereq: executing homebrew for macOS");
+    emit_frontend_log(&window, "__prereq_action__", "▶ Install Homebrew", "info");
+    emit_frontend_log(&window, "__prereq_action__", "Installing Homebrew package manager for macOS", "info");
+
+    // Create a minimal SetupStep for script execution
+    let step = SetupStep {
+        id: "homebrew".to_string(),
+        title: "Install Homebrew".to_string(),
+        description: "Installing the macOS package manager used to install all other tools".to_string(),
+        platform: crate::orchestrator::Platform::MacOs,
+        category: crate::orchestrator::StepCategory::PackageManager,
+        required: true,
+        estimated_minutes: 3,
+        rollback_steps: vec![],
+    };
+
+    let config = {
+        let s = state.lock().unwrap();
+        s.config.clone()
+    };
+
+    let result = execute_script_with_retry(window.clone(), app_handle.clone(), &step, &config).await;
+
+    match result {
+        Ok(_) => {
+            emit_frontend_log(&window, "__prereq_action__", "✓ Homebrew installed successfully", "success");
+            Ok(())
+        }
+        Err(e) => {
+            emit_frontend_log(&window, "__prereq_action__", &format!("✗ Installation failed: {}", e), "error");
+            Err(e)
+        }
+    }
+}
+
 /// Executes the VPN connection script as a pre-check action.
 /// Windows: launches OpenVPN
 /// macOS: launches Tunnelblick

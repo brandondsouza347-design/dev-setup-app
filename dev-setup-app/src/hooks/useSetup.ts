@@ -335,7 +335,25 @@ export function useSetup(): UseSetupReturn {
   }, []);
 
   const handlePrereqAction = useCallback(async (actionId: string) => {
-    const command = actionId === 'install_openvpn' ? 'install_openvpn_prereq' : 'connect_vpn_prereq';
+    // Map action IDs to Tauri commands
+    let command: string;
+    switch (actionId) {
+      case 'install_openvpn':
+        command = 'install_openvpn_prereq';
+        break;
+      case 'install_xcode_clt':
+        command = 'install_xcode_clt_prereq';
+        break;
+      case 'install_homebrew':
+        command = 'install_homebrew_prereq';
+        break;
+      case 'connect_vpn':
+        command = 'connect_vpn_prereq';
+        break;
+      default:
+        throw new Error(`Unknown prereq action: ${actionId}`);
+    }
+
     try {
       await invoke(command);
     } catch (e) {
@@ -389,11 +407,11 @@ export function useSetup(): UseSetupReturn {
       // Merge workflow settings with global config (workflow settings take priority)
       // Note: mergeWorkflowSettings will be imported when start_workflow is implemented
       // const mergedConfig = mergeWorkflowSettings(config, workflow.settings);
-      
+
       // TODO: Backend command start_workflow needs to be implemented
       // It should accept: workflowId, mergedConfig
       // The merged config should be used instead of global config during workflow execution
-      await invoke('start_workflow', { 
+      await invoke('start_workflow', {
         workflowId: workflow.id,
         // When implemented, pass: config: mergedConfig
       });

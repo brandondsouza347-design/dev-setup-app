@@ -100,6 +100,21 @@ export const PrereqScreen: React.FC<Props> = ({
     }
   };
 
+  const getActionButtonLabel = (actionId: string): string => {
+    switch (actionId) {
+      case 'install_openvpn':
+        return isWindows ? 'Install OpenVPN' : 'Install Tunnelblick';
+      case 'install_xcode_clt':
+        return 'Install Xcode CLT';
+      case 'install_homebrew':
+        return 'Install Homebrew';
+      case 'connect_vpn':
+        return 'Connect to VPN';
+      default:
+        return 'Install';
+    }
+  };
+
   const allPassed = checks.length > 0 && checks.every((c) => c.passed || c.warning);
   const hasFailures = checks.some((c) => !c.passed && !c.warning);
 
@@ -368,9 +383,7 @@ export const PrereqScreen: React.FC<Props> = ({
                 ) : (
                   <Play className="w-4 h-4" />
                 )}
-                {check.action_id === 'install_openvpn'
-                  ? isWindows ? 'Install OpenVPN' : 'Install Tunnelblick'
-                  : 'Connect to VPN'}
+                {getActionButtonLabel(check.action_id)}
               </button>
             )}
           </div>

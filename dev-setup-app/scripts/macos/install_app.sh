@@ -49,7 +49,7 @@ find_app() {
     # Check if path was provided as argument
     if [ -n "$1" ] && [ -d "$1" ]; then
         app_path="$1"
-        echo -e "${GREEN}✓${NC} Found app at: $app_path"
+        echo -e "${GREEN}✓${NC} Found app at: $app_path" >&2
         echo "$app_path"
         return 0
     fi
@@ -57,7 +57,7 @@ find_app() {
     # Check current directory
     if [ -d "./Dev_Setup.app" ]; then
         app_path="./Dev_Setup.app"
-        echo -e "${GREEN}✓${NC} Found app in current directory"
+        echo -e "${GREEN}✓${NC} Found app in current directory" >&2
         echo "$app_path"
         return 0
     fi
@@ -65,7 +65,7 @@ find_app() {
     # Check for mounted DMG volume
     if [ -d "/Volumes/Dev_Setup/Dev_Setup.app" ]; then
         app_path="/Volumes/Dev_Setup/Dev_Setup.app"
-        echo -e "${GREEN}✓${NC} Found app in mounted DMG volume"
+        echo -e "${GREEN}✓${NC} Found app in mounted DMG volume" >&2
         echo "$app_path"
         return 0
     fi
@@ -73,17 +73,17 @@ find_app() {
     # Check Downloads folder
     if [ -d "$HOME/Downloads/Dev_Setup.app" ]; then
         app_path="$HOME/Downloads/Dev_Setup.app"
-        echo -e "${GREEN}✓${NC} Found app in Downloads folder"
+        echo -e "${GREEN}✓${NC} Found app in Downloads folder" >&2
         echo "$app_path"
         return 0
     fi
 
-    echo -e "${RED}✗${NC} Could not find Dev_Setup.app"
-    echo ""
-    echo "Please provide the path to Dev_Setup.app:"
-    echo "  ./install_app.sh /path/to/Dev_Setup.app"
-    echo ""
-    echo "Or ensure the .dmg is mounted or the .app is in the current directory."
+    echo -e "${RED}✗${NC} Could not find Dev_Setup.app" >&2
+    echo "" >&2
+    echo "Please provide the path to Dev_Setup.app:" >&2
+    echo "  ./install_app.sh /path/to/Dev_Setup.app" >&2
+    echo "" >&2
+    echo "Or ensure the .dmg is mounted or the .app is in the current directory." >&2
     return 1
 }
 
