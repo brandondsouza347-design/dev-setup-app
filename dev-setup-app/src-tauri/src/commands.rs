@@ -1331,7 +1331,7 @@ pub async fn install_openvpn_prereq(
         rollback_steps: vec![],
     };
 
-    let mut config = {
+    let config = {
         let s = state.lock().unwrap();
         s.config.clone()
     };
@@ -1710,6 +1710,8 @@ pub fn save_config(
         skip_already_installed: input.skip_already_installed,
         skip_wsl_backup: input.skip_wsl_backup,
         openvpn_config_path: input.openvpn_config_path,
+        tunnelblick_installer_path: input.tunnelblick_installer_path,
+        vpn_method: input.vpn_method,
         git_name: input.git_name,
         git_email: input.git_email,
         gitlab_pat: input.gitlab_pat,
