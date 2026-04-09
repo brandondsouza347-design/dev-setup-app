@@ -115,6 +115,26 @@ export const PrereqScreen: React.FC<Props> = ({
     }
   };
 
+  const isActionDisabled = (actionId: string): { disabled: boolean; reason?: string } => {
+    // Tunnelblick requires Homebrew on macOS
+    if (actionId === 'install_openvpn' && !isWindows) {
+      const homebrewCheck = checks.find(c => c.name === 'Homebrew');
+      if (!homebrewCheck?.passed) {
+        return { disabled: true, reason: 'Install Homebrew first' };
+      }
+    }
+
+    // Homebrew requires Xcode CLT on macOS
+    if (actionId === 'install_homebrew' && !isWindows) {
+      const xcodeCheck = checks.find(c => c.name === 'Xcode Command Line Tools');
+      if (!xcodeCheck?.passed) {
+        return { disabled: true, reason: 'Install Xcode CLT first' };
+      }
+    }
+
+    return { disabled: false };
+  };
+
   const allPassed = checks.length > 0 && checks.every((c) => c.passed || c.warning);
   const hasFailures = checks.some((c) => !c.passed && !c.warning);
 
@@ -372,20 +392,32 @@ export const PrereqScreen: React.FC<Props> = ({
               <div className="text-sm text-gray-600 dark:text-gray-400">{check.message}</div>
             </div>
             {/* Action button for actionable checks */}
-            {check.actionable && check.action_id && !check.passed && (
-              <button
-                onClick={() => handleAction(check.action_id!)}
-                disabled={runningAction !== null}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition-colors shrink-0"
-              >
-                {runningAction === check.action_id ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Play className="w-4 h-4" />
-                )}
-                {getActionButtonLabel(check.action_id)}
-              </button>
-            )}
+            {check.actionable && check.action_id && !check.passed && (() => {
+              const actionState = isActionDisabled(check.action_id!);
+              const isDisabled = runningAction !== null || actionState.disabled;
+
+              return (
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <button
+                    onClick={() => handleAction(check.action_id!)}
+                    disabled={isDisabled}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
+                  >
+                    {runningAction === check.action_id ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Play className="w-4 h-4" />
+                    )}
+                    {getActionButtonLabel(check.action_id)}
+                  </button>
+                  {actionState.disabled && actionState.reason && (
+                    <span className="text-xs text-amber-600 dark:text-amber-400">
+                      {actionState.reason}
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         ))}
       </div>
