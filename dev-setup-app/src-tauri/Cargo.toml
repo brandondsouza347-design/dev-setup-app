@@ -1,6 +1,6 @@
 [package]
 name = "dev-setup-app"
-version = "2.6.9"
+version = "2.6.10"
 description = "Cross-platform developer environment installer"
 authors = ["Dev Setup Team"]
 license = ""

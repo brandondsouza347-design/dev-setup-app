@@ -59,8 +59,11 @@ echo "  (This may take 3-5 minutes — a password dialog will appear)"
 echo "  → You'll be prompted for your admin password via macOS dialog"
 echo ""
 
+# Create a temporary directory for our helper scripts
+TEMP_DIR=$(mktemp -d)
+
 # Create a GUI password helper for sudo prompts
-ASKPASS_SCRIPT=$(mktemp)
+ASKPASS_SCRIPT="$TEMP_DIR/askpass"
 cat > "$ASKPASS_SCRIPT" << 'ASKPASS_EOF'
 #!/bin/bash
 osascript -e 'display dialog "Homebrew installation requires administrator privileges to create directories.\n\nEnter your password:" default answer "" with title "Homebrew Installation" with icon caution with hidden answer' -e 'text returned of result' 2>/dev/null
@@ -68,17 +71,32 @@ ASKPASS_EOF
 
 chmod +x "$ASKPASS_SCRIPT"
 
-# Export SUDO_ASKPASS so sudo can use our GUI helper
+# Create a sudo wrapper that forces GUI password prompts
+SUDO_WRAPPER="$TEMP_DIR/sudo"
+cat > "$SUDO_WRAPPER" << 'SUDO_EOF'
+#!/bin/bash
+# Wrapper that forces sudo to use ASKPASS for GUI password prompts
+if [ -n "$SUDO_ASKPASS" ]; then
+    /usr/bin/sudo -A "$@"
+else
+    /usr/bin/sudo "$@"
+fi
+SUDO_EOF
+
+chmod +x "$SUDO_WRAPPER"
+
+# Export SUDO_ASKPASS and prepend our wrapper to PATH
 export SUDO_ASKPASS="$ASKPASS_SCRIPT"
+export PATH="$TEMP_DIR:$PATH"
 
 # Run Homebrew installer as the regular user (not root!)
-# The installer will call sudo internally when needed, which will use our GUI helper
+# The installer will call our sudo wrapper, which forces GUI password prompt
 if NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" 2>&1; then
-    rm -f "$ASKPASS_SCRIPT"
+    rm -rf "$TEMP_DIR"
     echo ""
     echo "  ✓ Homebrew core installation complete"
 else
-    rm -f "$ASKPASS_SCRIPT"
+    rm -rf "$TEMP_DIR"
     echo ""
     echo "  ✗ Homebrew installation failed"
     echo ""
