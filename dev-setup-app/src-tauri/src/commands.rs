@@ -441,15 +441,15 @@ pub async fn run_step(
                 ss.restart_required = true;
                 log::warn!("run_step: step '{}' completed but requires system restart", step_id);
             }
-            
+
             log::info!("run_step: step '{}' done in {}s ({} log lines)", step_id, duration, logs.len());
             ss.status = StepStatus::Done;
             ss.logs = logs;
             ss.error = None;
-            
+
             if restart_required {
-                let _ = window.emit("step_status", serde_json::json!({ 
-                    "id": step_id, 
+                let _ = window.emit("step_status", serde_json::json!({
+                    "id": step_id,
                     "status": "done",
                     "restart_required": true
                 }));
@@ -811,6 +811,9 @@ pub async fn check_prerequisites() -> Vec<PrereqCheck> {
 
     // OS-specific checks
     if os.os == "macos" {
+        checks.push(check_macos_version());
+        checks.push(check_xcode_clt());
+        checks.push(check_homebrew());
         checks.push(check_command_available("git", "Git"));
         checks.push(check_command_available("curl", "curl"));
         checks.push(check_command_available("bash", "bash"));
@@ -1025,6 +1028,196 @@ fn check_openvpn_installed(os: &str) -> PrereqCheck {
         },
         actionable: Some(!installed),
         action_id: Some("install_openvpn".to_string()),
+    }
+}
+
+fn check_macos_version() -> PrereqCheck {
+    #[cfg(target_os = "macos")]
+    {
+        let output = std::process::Command::new("sw_vers")
+            .arg("-productVersion")
+            .output();
+
+        if let Ok(output) = output {
+            if let Ok(version_str) = String::from_utf8(output.stdout) {
+                let version = version_str.trim();
+                log::info!("check_macos_version: detected macOS version {}", version);
+
+                // Parse version (e.g., "10.15.7" or "26.3.1")
+                let parts: Vec<&str> = version.split('.').collect();
+                if let Some(major) = parts.get(0).and_then(|s| s.parse::<u32>().ok()) {
+                    // macOS 11+ uses major version 11+, macOS 10.15+ uses 10.15
+                    let meets_requirement = major >= 11 || (major == 10 && parts.get(1).and_then(|s| s.parse::<u32>().ok()).unwrap_or(0) >= 15);
+
+                    return PrereqCheck {
+                        name: "macOS Version".to_string(),
+                        passed: meets_requirement,
+                        warning: !meets_requirement,
+                        message: if meets_requirement {
+                            format!("macOS {} (compatible with Homebrew and development tools)", version)
+                        } else {
+                            format!("macOS {} detected. Homebrew requires macOS 10.15 (Catalina) or later. Please upgrade your operating system.", version)
+                        },
+                        actionable: None,
+                        action_id: None,
+                    };
+                }
+            }
+        }
+
+        log::warn!("check_macos_version: [FAIL] Could not determine macOS version");
+        PrereqCheck {
+            name: "macOS Version".to_string(),
+            passed: false,
+            warning: true,
+            message: "Could not determine macOS version. Run 'sw_vers -productVersion' to check manually.".to_string(),
+            actionable: None,
+            action_id: None,
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    PrereqCheck {
+        name: "macOS Version".to_string(),
+        passed: true,
+        warning: false,
+        message: "Not applicable on this platform".to_string(),
+        actionable: None,
+        action_id: None,
+    }
+}
+
+fn check_xcode_clt() -> PrereqCheck {
+    #[cfg(target_os = "macos")]
+    {
+        let output = std::process::Command::new("xcode-select")
+            .arg("-p")
+            .output();
+
+        let installed = if let Ok(output) = output {
+            if output.status.success() {
+                if let Ok(path) = String::from_utf8(output.stdout) {
+                    let path = path.trim();
+                    log::info!("check_xcode_clt: [PASS] Xcode CLT found at {}", path);
+                    return PrereqCheck {
+                        name: "Xcode Command Line Tools".to_string(),
+                        passed: true,
+                        warning: false,
+                        message: format!("Installed at {}", path),
+                        actionable: None,
+                        action_id: None,
+                    };
+                }
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        if !installed {
+            log::warn!("check_xcode_clt: [FAIL] Xcode Command Line Tools not installed");
+        }
+
+        PrereqCheck {
+            name: "Xcode Command Line Tools".to_string(),
+            passed: installed,
+            warning: !installed,
+            message: if installed {
+                "Xcode Command Line Tools are installed".to_string()
+            } else {
+                "Xcode Command Line Tools not found. Required for compiling Python, Git, and other development tools. Click 'Install Xcode CLT' to install.".to_string()
+            },
+            actionable: Some(!installed),
+            action_id: Some("install_xcode_clt".to_string()),
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    PrereqCheck {
+        name: "Xcode Command Line Tools".to_string(),
+        passed: true,
+        warning: false,
+        message: "Not applicable on this platform".to_string(),
+        actionable: None,
+        action_id: None,
+    }
+}
+
+fn check_homebrew() -> PrereqCheck {
+    #[cfg(target_os = "macos")]
+    {
+        // Detect architecture to determine Homebrew path
+        let arch_output = std::process::Command::new("uname")
+            .arg("-m")
+            .output();
+
+        let brew_path = if let Ok(output) = arch_output {
+            if let Ok(arch) = String::from_utf8(output.stdout) {
+                let arch = arch.trim();
+                if arch == "arm64" {
+                    "/opt/homebrew/bin/brew"
+                } else {
+                    "/usr/local/bin/brew"  // Intel
+                }
+            } else {
+                "/usr/local/bin/brew"  // Default to Intel
+            }
+        } else {
+            "/usr/local/bin/brew"  // Default to Intel
+        };
+
+        // Check if Homebrew is installed
+        let brew_found = std::path::Path::new(brew_path).exists() || which::which("brew").is_ok();
+
+        if brew_found {
+            // Get Homebrew version
+            if let Ok(version_output) = std::process::Command::new("brew").arg("--version").output() {
+                if let Ok(version_str) = String::from_utf8(version_output.stdout) {
+                    let version = version_str.lines().next().unwrap_or("unknown");
+                    log::info!("check_homebrew: [PASS] {} ({})", brew_path, version);
+                    return PrereqCheck {
+                        name: "Homebrew".to_string(),
+                        passed: true,
+                        warning: false,
+                        message: format!("Homebrew installed at {} ({})", brew_path, version),
+                        actionable: None,
+                        action_id: None,
+                    };
+                }
+            }
+
+            log::info!("check_homebrew: [PASS] Homebrew found at {}", brew_path);
+            return PrereqCheck {
+                name: "Homebrew".to_string(),
+                passed: true,
+                warning: false,
+                message: format!("Homebrew installed at {}", brew_path),
+                actionable: None,
+                action_id: None,
+            };
+        }
+
+        log::warn!("check_homebrew: [FAIL] Homebrew not found at {}", brew_path);
+        PrereqCheck {
+            name: "Homebrew".to_string(),
+            passed: false,
+            warning: true,
+            message: format!("Homebrew not found at {}. Required to install PostgreSQL, Redis, Python (pyenv), Node.js (nvm), and other development tools. Click 'Install Homebrew' to install.", brew_path),
+            actionable: Some(true),
+            action_id: Some("install_homebrew".to_string()),
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    PrereqCheck {
+        name: "Homebrew".to_string(),
+        passed: true,
+        warning: false,
+        message: "Not applicable on this platform".to_string(),
+        actionable: None,
+        action_id: None,
     }
 }
 
@@ -1301,16 +1494,16 @@ pub async fn open_url(url: String, app_handle: AppHandle) -> Result<(), String> 
 #[tauri::command]
 pub async fn restart_system(app_handle: AppHandle) -> Result<(), String> {
     log::info!("restart_system: attempting system restart...");
-    
+
     #[cfg(target_os = "windows")]
     {
         use std::process::Command;
-        
+
         // Try to shutdown with restart flag
         let output = Command::new("shutdown")
             .args(&["/r", "/t", "10", "/c", "Dev Setup app completed. Restarting in 10 seconds..."])
             .output();
-        
+
         match output {
             Ok(output) if output.status.success() => {
                 log::info!("System restart initiated successfully");
@@ -1335,16 +1528,16 @@ pub async fn restart_system(app_handle: AppHandle) -> Result<(), String> {
             }
         }
     }
-    
+
     #[cfg(target_os = "macos")]
     {
         use std::process::Command;
-        
+
         // macOS restart - requires sudo
         let output = Command::new("osascript")
             .args(&["-e", "tell app \"System Events\" to restart"])
             .output();
-        
+
         match output {
             Ok(_) => {
                 log::info!("System restart initiated on macOS");
@@ -1360,7 +1553,7 @@ pub async fn restart_system(app_handle: AppHandle) -> Result<(), String> {
             }
         }
     }
-    
+
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
         log::info!("Restart not supported on this OS - closing application");

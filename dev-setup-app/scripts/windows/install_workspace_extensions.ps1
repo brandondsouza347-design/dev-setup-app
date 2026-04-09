@@ -391,7 +391,9 @@ try {
     Write-Output "[diag] Executing installation script inside WSL..."
     Flush-Output
 
-    $result = $bashScript | wsl -d ERC -- bash -s 2>&1
+    # Convert Windows line endings to Unix before piping to bash
+    $bashScriptUnix = $bashScript.Replace("`r`n", "`n")
+    $result = $bashScriptUnix | wsl -d ERC -- bash -s 2>&1
 
     # Display output and count results
     $result | ForEach-Object {
