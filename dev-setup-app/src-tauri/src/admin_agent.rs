@@ -25,7 +25,7 @@ use crate::orchestrator::{LogEvent, LogLevel, SetupStep};
 use crate::state::UserConfig;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter, WebviewWindow};
+use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 
 // ── Step IDs that require administrator privileges ────────────────────────────
 

@@ -1,4 +1,5 @@
 // commands.rs — Tauri command handlers exposed to the React frontend
+#[cfg(target_os = "windows")]
 use crate::admin_agent::{execute_via_agent, AdminAgentState};
 use crate::orchestrator::{execute_script_with_retry, find_step_by_id, get_revert_steps_for_os, get_steps_for_os, SetupStep};
 use crate::state::{AppState, CancelState, StepStatus, UserConfig, RunHistory, FailedStepLog, SkippedStepLog, RunType, RunStatus, ConfigProfile, CustomWorkflow};
@@ -49,6 +50,8 @@ pub struct ConfigInput {
     pub skip_already_installed: bool,
     pub skip_wsl_backup: bool,
     pub openvpn_config_path: Option<String>,
+    pub tunnelblick_installer_path: Option<String>,
+    pub vpn_method: Option<String>,
     pub git_name: Option<String>,
     pub git_email: Option<String>,
     pub gitlab_pat: Option<String>,
@@ -78,6 +81,8 @@ pub struct ConfigOutput {
     pub skip_already_installed: bool,
     pub skip_wsl_backup: bool,
     pub openvpn_config_path: Option<String>,
+    pub tunnelblick_installer_path: Option<String>,
+    pub vpn_method: Option<String>,
     pub git_name: Option<String>,
     pub git_email: Option<String>,
     pub gitlab_pat: Option<String>,
@@ -105,6 +110,8 @@ impl From<&UserConfig> for ConfigOutput {
             skip_already_installed: config.skip_already_installed,
             skip_wsl_backup: config.skip_wsl_backup,
             openvpn_config_path: config.openvpn_config_path.clone(),
+            tunnelblick_installer_path: config.tunnelblick_installer_path.clone(),
+            vpn_method: config.vpn_method.clone(),
             git_name: config.git_name.clone(),
             git_email: config.git_email.clone(),
             gitlab_pat: config.gitlab_pat.clone(),
