@@ -69,6 +69,8 @@ pub struct UserConfig {
     #[serde(default)]
     pub tunnelblick_installer_path: Option<String>,
     #[serde(default)]
+    pub tunnelblick_remote_url: Option<String>,
+    #[serde(default)]
     pub vpn_method: Option<String>,
     pub git_name: Option<String>,
     pub git_email: Option<String>,
@@ -112,6 +114,7 @@ impl Default for UserConfig {
             skip_wsl_backup: false,
             openvpn_config_path: None,
             tunnelblick_installer_path: None,
+            tunnelblick_remote_url: Some("https://github.com/brandondsouza347-design/dev-setup-app/releases/download/v2.7.0/Tunnelblick_4.0.1_build_5971.dmg".to_string()),
             vpn_method: None,
             git_name: None,
             git_email: None,

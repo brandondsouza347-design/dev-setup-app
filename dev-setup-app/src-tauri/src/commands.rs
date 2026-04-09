@@ -51,6 +51,7 @@ pub struct ConfigInput {
     pub skip_wsl_backup: bool,
     pub openvpn_config_path: Option<String>,
     pub tunnelblick_installer_path: Option<String>,
+    pub tunnelblick_remote_url: Option<String>,
     pub vpn_method: Option<String>,
     pub git_name: Option<String>,
     pub git_email: Option<String>,
@@ -1718,6 +1719,10 @@ pub fn save_config(
         skip_wsl_backup: input.skip_wsl_backup,
         openvpn_config_path: input.openvpn_config_path,
         tunnelblick_installer_path: input.tunnelblick_installer_path,
+        tunnelblick_remote_url: or_default(
+            input.tunnelblick_remote_url,
+            "https://github.com/brandondsouza347-design/dev-setup-app/releases/download/v2.7.0/Tunnelblick_4.0.1_build_5971.dmg"
+        ),
         vpn_method: input.vpn_method,
         git_name: input.git_name,
         git_email: input.git_email,

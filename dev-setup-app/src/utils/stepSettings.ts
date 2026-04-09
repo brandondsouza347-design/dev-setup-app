@@ -146,6 +146,7 @@ export const SETTING_CATEGORIES: Record<keyof UserConfig, SettingCategory> = {
   // Network & VPN
   openvpn_config_path: SettingCategory.Network,
   tunnelblick_installer_path: SettingCategory.Network,
+  tunnelblick_remote_url: SettingCategory.Network,
   vpn_method: SettingCategory.Network,
 };
 
@@ -227,6 +228,7 @@ export const SETTING_LABELS: Record<keyof UserConfig, string> = {
   aws_secret_access_key: 'AWS Secret Access Key',
   openvpn_config_path: 'OpenVPN Config File Path',
   tunnelblick_installer_path: 'Tunnelblick Installer Path',
+  tunnelblick_remote_url: 'Tunnelblick Remote URL',
   vpn_method: 'VPN Method',
 };
 

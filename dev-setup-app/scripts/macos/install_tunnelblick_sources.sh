@@ -7,6 +7,27 @@ trap 'rm -rf "$TEMP_DIR"' EXIT
 
 SKIP_INSTALLED="${SETUP_SKIP_INSTALLED:-true}"
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# CONFIGURATION: Custom/GitLab Remote Installer URL
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Set TUNNELBLICK_REMOTE_URL to download from your own hosted location.
+#
+# Examples:
+#   - GitLab Package Registry:
+#     export TUNNELBLICK_REMOTE_URL="https://gitlab.com/api/v4/projects/<PROJECT_ID>/packages/generic/tunnelblick/4.0.1/Tunnelblick_4.0.1_build_5971.dmg"
+#
+#   - GitLab Release Assets:
+#     export TUNNELBLICK_REMOTE_URL="https://gitlab.com/<username>/<project>/-/releases/<tag>/downloads/Tunnelblick_4.0.1_build_5971.dmg"
+#
+#   - Private token (if repository is private):
+#     export TUNNELBLICK_REMOTE_URL="https://gitlab.com/api/v4/projects/<PROJECT_ID>/packages/generic/tunnelblick/4.0.1/Tunnelblick_4.0.1_build_5971.dmg"
+#     export TUNNELBLICK_GITLAB_TOKEN="<your-token>"  # Will be used in Authorization header
+#
+# Leave empty to skip custom URL and use public sources (Homebrew/GitHub/SourceForge).
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TUNNELBLICK_REMOTE_URL="${SETUP_TUNNELBLICK_REMOTE_URL:-}"
+TUNNELBLICK_GITLAB_TOKEN="${SETUP_TUNNELBLICK_GITLAB_TOKEN:-}"
+
 # Check if already installed
 echo "→ Checking for existing Tunnelblick installation..."
 if [ "$SKIP_INSTALLED" = "true" ] && [ -d "/Applications/Tunnelblick.app" ]; then
@@ -18,9 +39,51 @@ echo "→ Attempting Tunnelblick installation from multiple sources..."
 echo "  This may take several minutes."
 echo ""
 
+# Method 0: Custom/GitLab Remote URL (if configured)
+if [ -n "$TUNNELBLICK_REMOTE_URL" ]; then
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "Method 0/4: Custom Remote URL (GitLab/Hosted)"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    echo "→ Downloading from configured URL..."
+    echo "  URL: $TUNNELBLICK_REMOTE_URL"
+
+    DMG_FILE="$TEMP_DIR/Tunnelblick-custom.dmg"
+
+    # Build curl command with optional token
+    CURL_CMD="curl -L --max-time 180 -o \"$DMG_FILE\""
+    if [ -n "$TUNNELBLICK_GITLAB_TOKEN" ]; then
+        CURL_CMD="$CURL_CMD -H \"PRIVATE-TOKEN: $TUNNELBLICK_GITLAB_TOKEN\""
+        echo "  Using authentication token"
+    fi
+    CURL_CMD="$CURL_CMD \"$TUNNELBLICK_REMOTE_URL\""
+
+    if eval $CURL_CMD 2>&1; then
+        if [ -f "$DMG_FILE" ] && [ -s "$DMG_FILE" ]; then
+            echo "✓ Download complete"
+            echo "→ Installing from custom source..."
+
+            export SETUP_TUNNELBLICK_INSTALLER_PATH="$DMG_FILE"
+            if bash "$(dirname "$0")/install_tunnelblick_manual.sh"; then
+                echo "✓ Tunnelblick installed successfully from custom URL!"
+                exit 0
+            else
+                echo "✗ Installation from custom URL failed"
+            fi
+        else
+            echo "✗ Downloaded file is empty or missing"
+        fi
+    else
+        echo "✗ Download failed or timed out"
+    fi
+
+    echo "  Falling back to public sources..."
+    echo ""
+fi
+
 # Method 1: Homebrew (fastest, but may be blocked)
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "Method 1/3: Homebrew Cask"
+echo "Method 1/4: Homebrew Cask"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # Ensure Homebrew is in PATH
@@ -52,7 +115,7 @@ fi
 
 # Method 2: GitHub Releases (direct download)
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "Method 2/3: GitHub Releases"
+echo "Method 2/4: GitHub Releases"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 echo "→ Fetching latest release from GitHub..."
@@ -100,7 +163,7 @@ echo ""
 
 # Method 3: SourceForge (alternative mirror)
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "Method 3/3: SourceForge Mirror"
+echo "Method 3/4: SourceForge Mirror"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 echo "→ Attempting download from SourceForge..."

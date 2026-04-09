@@ -100,6 +100,7 @@ export function useSetup(): UseSetupReturn {
     skip_wsl_backup: false,
     openvpn_config_path: null,
     tunnelblick_installer_path: null,
+    tunnelblick_remote_url: 'https://github.com/brandondsouza347-design/dev-setup-app/releases/download/v2.7.0/Tunnelblick_4.0.1_build_5971.dmg',
     vpn_method: null,
     git_name: null,
     git_email: null,
