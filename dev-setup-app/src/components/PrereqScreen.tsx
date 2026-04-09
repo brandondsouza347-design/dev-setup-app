@@ -138,11 +138,15 @@ export const PrereqScreen: React.FC<Props> = ({
   const allPassed = checks.length > 0 && checks.every((c) => c.passed || c.warning);
   const hasFailures = checks.some((c) => !c.passed && !c.warning);
 
-  // Group VPN-related checks together
-  const openvpnCheck = checks.find(c => c.name === 'OpenVPN (VPN Client)');
+  // Group VPN-related checks together (handle both Windows and macOS)
+  const openvpnCheck = checks.find(c =>
+    c.name === 'OpenVPN (VPN Client)' || c.name === 'Tunnelblick (VPN Client)'
+  );
   const vpnConnCheck = checks.find(c => c.name === 'GitLab VPN Connectivity');
   const otherChecks = checks.filter(c =>
-    c.name !== 'OpenVPN (VPN Client)' && c.name !== 'GitLab VPN Connectivity'
+    c.name !== 'OpenVPN (VPN Client)' &&
+    c.name !== 'Tunnelblick (VPN Client)' &&
+    c.name !== 'GitLab VPN Connectivity'
   );
 
   return (
@@ -284,20 +288,32 @@ export const PrereqScreen: React.FC<Props> = ({
                         <span className="font-medium text-gray-900 dark:text-white">OpenVPN Client: </span>
                         <span className="text-gray-600 dark:text-gray-400">{openvpnCheck.message}</span>
                       </div>
-                      {openvpnCheck.actionable && openvpnCheck.action_id && !openvpnCheck.passed && (
-                        <button
-                          onClick={() => handleAction(openvpnCheck.action_id!)}
-                          disabled={runningAction !== null}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition-colors shrink-0"
-                        >
-                          {runningAction === openvpnCheck.action_id ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Play className="w-4 h-4" />
-                          )}
-                          {isWindows ? 'Install OpenVPN' : 'Install Tunnelblick'}
-                        </button>
-                      )}
+                      {openvpnCheck.actionable && openvpnCheck.action_id && !openvpnCheck.passed && (() => {
+                        const actionState = isActionDisabled(openvpnCheck.action_id!);
+                        const isDisabled = runningAction !== null || actionState.disabled;
+
+                        return (
+                          <div className="flex flex-col items-end gap-1 shrink-0">
+                            <button
+                              onClick={() => handleAction(openvpnCheck.action_id!)}
+                              disabled={isDisabled}
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
+                            >
+                              {runningAction === openvpnCheck.action_id ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Play className="w-4 h-4" />
+                              )}
+                              {isWindows ? 'Install OpenVPN' : 'Install Tunnelblick'}
+                            </button>
+                            {actionState.disabled && actionState.reason && (
+                              <span className="text-xs text-amber-600 dark:text-amber-400">
+                                {actionState.reason}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                   {/* VPN Connectivity Status */}
