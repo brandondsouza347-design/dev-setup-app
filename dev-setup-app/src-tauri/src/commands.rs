@@ -999,35 +999,57 @@ fn check_admin_rights() -> PrereqCheck {
 }
 
 fn check_openvpn_installed(os: &str) -> PrereqCheck {
-    let (app_name, _check_cmd) = if os == "windows" {
-        ("OpenVPN", "openvpn")
-    } else {
-        ("Tunnelblick", "tunnelblick")
-    };
-
-    let installed = if os == "windows" {
+    if os == "windows" {
         // Check if OpenVPN is installed via common paths
-        std::path::Path::new(r"C:\Program Files\OpenVPN\bin\openvpn.exe").exists()
+        let installed = std::path::Path::new(r"C:\Program Files\OpenVPN\bin\openvpn.exe").exists()
             || std::path::Path::new(r"C:\Program Files (x86)\OpenVPN\bin\openvpn.exe").exists()
-            || which::which("openvpn").is_ok()
+            || which::which("openvpn").is_ok();
+
+        log::info!("check_openvpn_installed: os=windows, installed={}", installed);
+
+        PrereqCheck {
+            name: "OpenVPN (VPN Client)".to_string(),
+            passed: installed,
+            warning: !installed,
+            message: if installed {
+                "OpenVPN is installed".to_string()
+            } else {
+                "OpenVPN not found. Required to access corporate GitLab server for SSH keys and repository cloning. Click 'Install OpenVPN' to set up VPN access.".to_string()
+            },
+            actionable: Some(!installed),
+            action_id: Some("install_openvpn".to_string()),
+        }
     } else {
-        // Check if Tunnelblick is installed on macOS
-        std::path::Path::new("/Applications/Tunnelblick.app").exists()
-    };
+        // macOS: Check for both Tunnelblick and OpenVPN CLI
+        let tunnelblick_installed = std::path::Path::new("/Applications/Tunnelblick.app").exists();
+        let openvpn_cli_installed = which::which("openvpn").is_ok();
+        let installed = tunnelblick_installed || openvpn_cli_installed;
 
-    log::info!("check_openvpn_installed: os={}, app={}, installed={}", os, app_name, installed);
-
-    PrereqCheck {
-        name: format!("{} (VPN Client)", app_name),
-        passed: installed,
-        warning: !installed,
-        message: if installed {
-            format!("{} is installed", app_name)
+        let method = if tunnelblick_installed {
+            "Tunnelblick (GUI)"
+        } else if openvpn_cli_installed {
+            "OpenVPN CLI"
         } else {
-            format!("{} not found. Required to access corporate GitLab server for SSH keys and repository cloning. Click 'Install {}' to set up VPN access.", app_name, app_name)
-        },
-        actionable: Some(!installed),
-        action_id: Some("install_openvpn".to_string()),
+            "None"
+        };
+
+        log::info!(
+            "check_openvpn_installed: os=macos, tunnelblick={}, openvpn_cli={}, method={}",
+            tunnelblick_installed, openvpn_cli_installed, method
+        );
+
+        PrereqCheck {
+            name: format!("VPN Client ({})", method),
+            passed: installed,
+            warning: !installed,
+            message: if installed {
+                format!("{} is installed", method)
+            } else {
+                "No VPN client found. Required to access corporate GitLab server. Choose: Install Tunnelblick (GUI), Install from File, or automatic fallback to OpenVPN CLI.".to_string()
+            },
+            actionable: Some(!installed),
+            action_id: Some("install_openvpn".to_string()),
+        }
     }
 }
 
@@ -1281,10 +1303,11 @@ pub async fn install_openvpn_prereq(
             "Installing OpenVPN via winget (UAC prompt will appear)",
         )
     } else {
+        // macOS: try multi-source installation first
         (
-            "install_openvpn_mac",
-            "Install Tunnelblick",
-            "Installing Tunnelblick via Homebrew for VPN access",
+            "install_tunnelblick_sources",
+            "Install VPN Client",
+            "Trying multiple sources: Homebrew → GitHub → SourceForge",
         )
     };
 
@@ -1308,15 +1331,55 @@ pub async fn install_openvpn_prereq(
         rollback_steps: vec![],
     };
 
-    let config = {
+    let mut config = {
         let s = state.lock().unwrap();
         s.config.clone()
     };
 
     let result = execute_script_with_retry(window.clone(), app_handle.clone(), &step, &config).await;
 
+    // macOS: If multi-source installation failed, fall back to OpenVPN CLI
+    if os.os == "macos" && result.is_err() {
+        emit_frontend_log(&window, "__prereq_action__", "⚠ Tunnelblick installation failed from all sources", "warn");
+        emit_frontend_log(&window, "__prereq_action__", "▶ Falling back to OpenVPN CLI installation", "info");
+        
+        let cli_step = SetupStep {
+            id: "install_openvpn_cli".to_string(),
+            title: "Install OpenVPN CLI".to_string(),
+            description: "Installing command-line OpenVPN via Homebrew".to_string(),
+            platform: crate::orchestrator::Platform::MacOs,
+            category: crate::orchestrator::StepCategory::Network,
+            required: true,
+            estimated_minutes: 2,
+            rollback_steps: vec![],
+        };
+        
+        let cli_result = execute_script_with_retry(window.clone(), app_handle.clone(), &cli_step, &config).await;
+        
+        match cli_result {
+            Ok(_) => {
+                // Update vpn_method in state
+                {
+                    let mut s = state.lock().unwrap();
+                    s.config.vpn_method = Some("openvpn-cli".to_string());
+                }
+                emit_frontend_log(&window, "__prereq_action__", "✓ OpenVPN CLI installed successfully (fallback method)", "success");
+                return Ok(());
+            }
+            Err(e) => {
+                emit_frontend_log(&window, "__prereq_action__", &format!("✗ CLI installation also failed: {}", e), "error");
+                return Err(format!("Both Tunnelblick and OpenVPN CLI installation failed. Last error: {}", e));
+            }
+        }
+    }
+
     match result {
         Ok(_) => {
+            // Update vpn_method in state for successful Tunnelblick installation
+            if os.os == "macos" {
+                let mut s = state.lock().unwrap();
+                s.config.vpn_method = Some("tunnelblick".to_string());
+            }
             emit_frontend_log(&window, "__prereq_action__", &format!("✓ {} installed successfully", title), "success");
             Ok(())
         }
@@ -1413,7 +1476,7 @@ pub async fn install_homebrew_prereq(
 
 /// Executes the VPN connection script as a pre-check action.
 /// Windows: launches OpenVPN
-/// macOS: launches Tunnelblick
+/// macOS: launches Tunnelblick or OpenVPN CLI based on vpn_method
 #[tauri::command]
 pub async fn connect_vpn_prereq(
     window: WebviewWindow,
@@ -1421,6 +1484,7 @@ pub async fn connect_vpn_prereq(
     state: State<'_, Mutex<AppState>>,
 ) -> Result<(), String> {
     let os = detect_os();
+    
     let (step_id, title, description) = if os.os == "windows" {
         (
             "connect_vpn",
@@ -1428,11 +1492,24 @@ pub async fn connect_vpn_prereq(
             "Launching OpenVPN and waiting for GitLab connectivity",
         )
     } else {
-        (
-            "connect_vpn_mac",
-            "Connect to VPN",
-            "Launching Tunnelblick and waiting for GitLab connectivity",
-        )
+        // macOS: check vpn_method to determine script
+        let vpn_method = {
+            let s = state.lock().unwrap();
+            s.config.vpn_method.clone()
+        };
+        
+        match vpn_method.as_deref() {
+            Some("openvpn-cli") => (
+                "connect_vpn_cli",
+                "Connect to VPN",
+                "Starting OpenVPN CLI daemon and waiting for GitLab connectivity",
+            ),
+            _ => (
+                "connect_vpn_mac",
+                "Connect to VPN",
+                "Launching Tunnelblick and waiting for GitLab connectivity",
+            ),
+        }
     };
 
     log::info!("connect_vpn_prereq: executing {} for os={}", step_id, os.os);
@@ -1469,6 +1546,105 @@ pub async fn connect_vpn_prereq(
         }
         Err(e) => {
             emit_frontend_log(&window, "__prereq_action__", &format!("✗ VPN connection failed: {}", e), "error");
+            Err(e)
+        }
+    }
+}
+
+/// Install Tunnelblick from a local .dmg or .pkg file (macOS only)
+#[tauri::command]
+pub async fn install_tunnelblick_manual_prereq(
+    window: WebviewWindow,
+    app_handle: AppHandle,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<(), String> {
+    let os = detect_os();
+    
+    if os.os != "macos" {
+        return Err("Manual Tunnelblick installation is only available on macOS".to_string());
+    }
+
+    log::info!("install_tunnelblick_manual_prereq: installing from local file");
+    emit_frontend_log(&window, "__prereq_action__", "▶ Install Tunnelblick from File", "info");
+    emit_frontend_log(&window, "__prereq_action__", "Installing Tunnelblick from local .dmg or .pkg file", "info");
+
+    let step = SetupStep {
+        id: "install_tunnelblick_manual".to_string(),
+        title: "Install Tunnelblick from File".to_string(),
+        description: "Installing Tunnelblick from local installer file".to_string(),
+        platform: crate::orchestrator::Platform::MacOs,
+        category: crate::orchestrator::StepCategory::Network,
+        required: true,
+        estimated_minutes: 2,
+        rollback_steps: vec![],
+    };
+
+    let config = {
+        let s = state.lock().unwrap();
+        s.config.clone()
+    };
+
+    let result = execute_script_with_retry(window.clone(), app_handle.clone(), &step, &config).await;
+
+    match result {
+        Ok(_) => {
+            // Update vpn_method in state
+            {
+                let mut s = state.lock().unwrap();
+                s.config.vpn_method = Some("tunnelblick".to_string());
+            }
+            emit_frontend_log(&window, "__prereq_action__", "✓ Tunnelblick installed successfully from file", "success");
+            Ok(())
+        }
+        Err(e) => {
+            emit_frontend_log(&window, "__prereq_action__", &format!("✗ Manual installation failed: {}", e), "error");
+            Err(e)
+        }
+    }
+}
+
+/// Disconnect OpenVPN CLI daemon (macOS only)
+#[tauri::command]
+pub async fn disconnect_vpn_prereq(
+    window: WebviewWindow,
+    app_handle: AppHandle,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<(), String> {
+    let os = detect_os();
+    
+    if os.os != "macos" {
+        return Err("VPN disconnect is only available on macOS".to_string());
+    }
+
+    log::info!("disconnect_vpn_prereq: disconnecting OpenVPN CLI");
+    emit_frontend_log(&window, "__prereq_action__", "▶ Disconnect VPN", "info");
+    emit_frontend_log(&window, "__prereq_action__", "Stopping OpenVPN CLI daemon", "info");
+
+    let step = SetupStep {
+        id: "disconnect_vpn_cli".to_string(),
+        title: "Disconnect VPN".to_string(),
+        description: "Stopping OpenVPN CLI background daemon".to_string(),
+        platform: crate::orchestrator::Platform::MacOs,
+        category: crate::orchestrator::StepCategory::Network,
+        required: false,
+        estimated_minutes: 1,
+        rollback_steps: vec![],
+    };
+
+    let config = {
+        let s = state.lock().unwrap();
+        s.config.clone()
+    };
+
+    let result = execute_script_with_retry(window.clone(), app_handle.clone(), &step, &config).await;
+
+    match result {
+        Ok(_) => {
+            emit_frontend_log(&window, "__prereq_action__", "✓ VPN disconnected successfully", "success");
+            Ok(())
+        }
+        Err(e) => {
+            emit_frontend_log(&window, "__prereq_action__", &format!("✗ Disconnect failed: {}", e), "error");
             Err(e)
         }
     }
@@ -2086,6 +2262,49 @@ pub async fn delete_workflow(
 
     log::info!("Deleted workflow: ID={}", workflow_id);
     Ok(())
+}
+
+/// Create predefined macOS VPN Setup workflow template
+#[tauri::command]
+pub async fn create_macos_vpn_workflow_template(
+    app_handle: AppHandle,
+) -> Result<String, String> {
+    let workflow_id = format!("macos_vpn_openvpn_cli_{}", 
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|e| format!("System time error: {}", e))?
+            .as_secs()
+    );
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| format!("System time error: {}", e))?
+        .as_secs() as i64;
+
+    let workflow = CustomWorkflow {
+        id: workflow_id.clone(),
+        name: "🍎 macOS VPN Setup (OpenVPN CLI)".to_string(),
+        description: "Install and connect to VPN using OpenVPN CLI for macOS. Alternative to Tunnelblick for network-restricted environments. Requires: Homebrew installed, .ovpn config file selected in Settings, admin password for sudo access.".to_string(),
+        step_ids: vec![
+            "install_openvpn_cli".to_string(),
+            "connect_vpn_cli".to_string(),
+        ],
+        created_at: now,
+        last_run_at: None,
+        settings: None,
+    };
+
+    let workflows_dir = get_workflows_dir_path(&app_handle)?;
+    let workflow_path = workflows_dir.join(format!("{}.json", workflow_id));
+
+    let json = serde_json::to_string_pretty(&workflow)
+        .map_err(|e| format!("Failed to serialize workflow: {}", e))?;
+
+    fs::write(&workflow_path, json)
+        .map_err(|e| format!("Failed to write workflow file: {}", e))?;
+
+    log::info!("Created predefined macOS VPN workflow: {} (ID: {})", workflow.name, workflow_id);
+    Ok(workflow_id)
 }
 
 /// Update workflow last_run_at timestamp

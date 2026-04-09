@@ -31,6 +31,9 @@ export const WorkflowScreen: React.FC<Props> = ({ steps, config, onBack, onExecu
   const [activeTab, setActiveTab] = useState<'steps' | 'settings'>('steps');
   const [loading, setLoading] = useState(false);
 
+  // Detect macOS
+  const isMac = window.navigator.userAgent.includes('Mac');
+
   useEffect(() => {
     loadWorkflows();
   }, []);
@@ -41,6 +44,19 @@ export const WorkflowScreen: React.FC<Props> = ({ steps, config, onBack, onExecu
       setWorkflows(list);
     } catch (err) {
       console.error('Failed to load workflows:', err);
+    }
+  };
+
+  const createMacVPNTemplate = async () => {
+    setLoading(true);
+    try {
+      const workflowId = await invoke<string>('create_macos_vpn_workflow_template');
+      await loadWorkflows();
+      alert('macOS VPN workflow template created! You can now execute or customize it.');
+    } catch (err) {
+      alert(`Failed to create template: ${err}`);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -140,15 +156,30 @@ export const WorkflowScreen: React.FC<Props> = ({ steps, config, onBack, onExecu
         </p>
       </div>
 
-      {/* Create New Workflow Button */}
+      {/* Action Buttons */}
       {!showCreateForm && (
-        <button
-          onClick={() => setShowCreateForm(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg mb-6 w-fit transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Create New Workflow
-        </button>
+        <div className="flex gap-3 mb-6">
+          <button
+            onClick={() => setShowCreateForm(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Create New Workflow
+          </button>
+          
+          {/* macOS VPN Template Button - only show on macOS */}
+          {isMac && (
+            <button
+              onClick={createMacVPNTemplate}
+              disabled={loading}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white rounded-lg transition-colors"
+              title="Quick-add template for OpenVPN CLI setup on macOS"
+            >
+              <span className="text-lg">🍎</span>
+              <span>Add macOS VPN Template</span>
+            </button>
+          )}
+        </div>
       )}
 
       {/* Workflow Creation Form */}
@@ -369,6 +400,17 @@ export const WorkflowScreen: React.FC<Props> = ({ steps, config, onBack, onExecu
                         <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
                           {workflow.name}
                         </h4>
+                        {/* Show Mac icon if workflow has Mac-specific steps */}
+                        {workflow.step_ids.some(id => 
+                          id.includes('_mac') || id.includes('_cli')
+                        ) && (
+                          <span 
+                            className="text-xs px-2 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded"
+                            title="macOS specific workflow"
+                          >
+                            🍎 macOS
+                          </span>
+                        )}
                         {requiresAdmin && (
                           <span className="flex items-center gap-1 px-2 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-xs font-medium rounded-full">
                             <Shield className="w-3 h-3" />

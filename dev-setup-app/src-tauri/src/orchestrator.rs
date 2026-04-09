@@ -991,7 +991,12 @@ fn build_script_command(
         "install_pgadmin_windows" => ("windows", "install_pgadmin.ps1",       "powershell", vec!["admin".to_string()]),
         // macOS GitLab onboarding track
         "install_openvpn_mac"     => ("macos", "install_openvpn.sh",     "bash", vec![]),
+        "install_tunnelblick_sources" => ("macos", "install_tunnelblick_sources.sh", "bash", vec![]),
+        "install_tunnelblick_manual"  => ("macos", "install_tunnelblick_manual.sh",  "bash", vec![]),
+        "install_openvpn_cli"         => ("macos", "install_openvpn_cli.sh",         "bash", vec![]),
         "connect_vpn_mac"         => ("macos", "connect_vpn.sh",         "bash", vec![]),
+        "connect_vpn_cli"         => ("macos", "connect_vpn_cli.sh",     "bash", vec![]),
+        "disconnect_vpn_cli"      => ("macos", "disconnect_vpn_cli.sh",  "bash", vec![]),
         "gitlab_ssh_mac"          => ("macos", "setup_gitlab_ssh.sh",    "bash", vec![]),
         "clone_repo_mac"          => ("macos", "clone_repo.sh",          "bash", vec![]),
         "pyenv_local_mac"         => ("macos", "pyenv_local.sh",         "bash", vec![]),

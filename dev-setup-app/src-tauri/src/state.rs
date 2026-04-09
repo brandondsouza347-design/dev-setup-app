@@ -66,6 +66,10 @@ pub struct UserConfig {
     pub skip_already_installed: bool,
     pub skip_wsl_backup: bool,
     pub openvpn_config_path: Option<String>,
+    #[serde(default)]
+    pub tunnelblick_installer_path: Option<String>,
+    #[serde(default)]
+    pub vpn_method: Option<String>,
     pub git_name: Option<String>,
     pub git_email: Option<String>,
     #[serde(
@@ -107,6 +111,8 @@ impl Default for UserConfig {
             skip_already_installed: false,
             skip_wsl_backup: false,
             openvpn_config_path: None,
+            tunnelblick_installer_path: None,
+            vpn_method: None,
             git_name: None,
             git_email: None,
             gitlab_pat: None,

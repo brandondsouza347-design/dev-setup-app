@@ -39,9 +39,11 @@ fn main() {
             commands::reset_state,
             commands::check_prerequisites,
             commands::install_openvpn_prereq,
+            commands::install_tunnelblick_manual_prereq,
             commands::install_xcode_clt_prereq,
             commands::install_homebrew_prereq,
             commands::connect_vpn_prereq,
+            commands::disconnect_vpn_prereq,
             commands::open_terminal,
             commands::get_config,
             commands::save_config,
@@ -65,6 +67,7 @@ fn main() {
             commands::delete_workflow,
             commands::update_workflow_last_run,
             commands::execute_workflow,
+            commands::create_macos_vpn_workflow_template,
         ])
         .setup(|_app| {
             log::info!(

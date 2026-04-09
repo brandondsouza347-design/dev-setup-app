@@ -341,6 +341,9 @@ export function useSetup(): UseSetupReturn {
       case 'install_openvpn':
         command = 'install_openvpn_prereq';
         break;
+      case 'install_tunnelblick_manual':
+        command = 'install_tunnelblick_manual_prereq';
+        break;
       case 'install_xcode_clt':
         command = 'install_xcode_clt_prereq';
         break;
@@ -349,6 +352,9 @@ export function useSetup(): UseSetupReturn {
         break;
       case 'connect_vpn':
         command = 'connect_vpn_prereq';
+        break;
+      case 'disconnect_vpn':
+        command = 'disconnect_vpn_prereq';
         break;
       default:
         throw new Error(`Unknown prereq action: ${actionId}`);
@@ -388,6 +394,20 @@ export function useSetup(): UseSetupReturn {
   }, []);
 
   const executeWorkflow = useCallback(async (workflow: CustomWorkflow) => {
+    // Check prerequisites for VPN workflows
+    const hasVPNSteps = workflow.step_ids.some(id => 
+      id.includes('openvpn') || id.includes('vpn')
+    );
+    
+    if (hasVPNSteps && !config.openvpn_config_path) {
+      const confirmed = window.confirm(
+        'This workflow requires a VPN configuration file.\n\n' +
+        'Please go to Settings and select your .ovpn file before running this workflow.\n\n' +
+        'Continue anyway?'
+      );
+      if (!confirmed) return;
+    }
+
     // Filter steps to only include those in the workflow
     const filteredSteps = steps.filter((step) => workflow.step_ids.includes(step.id));
     // Order them according to workflow step order
@@ -419,7 +439,7 @@ export function useSetup(): UseSetupReturn {
       console.error('Workflow execution error:', e);
       setIsRunningWorkflow(false);
     }
-  }, [steps]);
+  }, [steps, config, setPage]);
 
   const retryStep = useCallback(async (id: string) => {
     setIsRunning(true);

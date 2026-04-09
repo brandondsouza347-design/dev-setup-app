@@ -100,6 +100,22 @@ export const PrereqScreen: React.FC<Props> = ({
     }
   };
 
+  const browseTunnelblickInstaller = async () => {
+    const selected = await openDialog({
+      directory: false,
+      multiple: false,
+      filters: [
+        { name: 'Tunnelblick Installer', extensions: ['dmg', 'pkg'] },
+      ],
+    });
+    if (selected) {
+      onUpdateConfig('tunnelblick_installer_path', selected);
+      // Save the config so it's persisted and available to scripts
+      const updatedConfig = { ...config, tunnelblick_installer_path: selected };
+      await onSaveConfig(updatedConfig);
+    }
+  };
+
   const getActionButtonLabel = (actionId: string): string => {
     switch (actionId) {
       case 'install_openvpn':
@@ -285,27 +301,52 @@ export const PrereqScreen: React.FC<Props> = ({
                         <XCircle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
                       )}
                       <div className="flex-1 text-sm">
-                        <span className="font-medium text-gray-900 dark:text-white">OpenVPN Client: </span>
+                        <span className="font-medium text-gray-900 dark:text-white">VPN Client: </span>
                         <span className="text-gray-600 dark:text-gray-400">{openvpnCheck.message}</span>
+                        {!isWindows && config.vpn_method && openvpnCheck.passed && (
+                          <span className="ml-2 px-2 py-0.5 text-xs font-medium bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded">
+                            {config.vpn_method === 'tunnelblick' ? 'Tunnelblick (GUI)' : 'OpenVPN CLI'}
+                          </span>
+                        )}
                       </div>
                       {openvpnCheck.actionable && openvpnCheck.action_id && !openvpnCheck.passed && (() => {
                         const actionState = isActionDisabled(openvpnCheck.action_id!);
                         const isDisabled = runningAction !== null || actionState.disabled;
 
                         return (
-                          <div className="flex flex-col items-end gap-1 shrink-0">
-                            <button
-                              onClick={() => handleAction(openvpnCheck.action_id!)}
-                              disabled={isDisabled}
-                              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
-                            >
-                              {runningAction === openvpnCheck.action_id ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                              ) : (
-                                <Play className="w-4 h-4" />
+                          <div className="flex flex-col items-end gap-2 shrink-0">
+                            {/* Primary install button */}
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => handleAction(openvpnCheck.action_id!)}
+                                disabled={isDisabled}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
+                              >
+                                {runningAction === openvpnCheck.action_id ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <Play className="w-4 h-4" />
+                                )}
+                                {isWindows ? 'Install OpenVPN' : 'Install VPN'}
+                              </button>
+                              {/* Manual install from file (macOS only) */}
+                              {!isWindows && (
+                                <button
+                                  onClick={async () => {
+                                    await browseTunnelblickInstaller();
+                                    if (config.tunnelblick_installer_path) {
+                                      await handleAction('install_tunnelblick_manual');
+                                    }
+                                  }}
+                                  disabled={runningAction !== null}
+                                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
+                                  title="Install Tunnelblick from a local .dmg or .pkg file"
+                                >
+                                  <FolderOpen className="w-4 h-4" />
+                                  Install from File
+                                </button>
                               )}
-                              {isWindows ? 'Install OpenVPN' : 'Install Tunnelblick'}
-                            </button>
+                            </div>
                             {actionState.disabled && actionState.reason && (
                               <span className="text-xs text-amber-600 dark:text-amber-400">
                                 {actionState.reason}
@@ -328,32 +369,47 @@ export const PrereqScreen: React.FC<Props> = ({
                         <span className="font-medium text-gray-900 dark:text-white">GitLab Connectivity: </span>
                         <span className="text-gray-600 dark:text-gray-400">{vpnConnCheck.message}</span>
                       </div>
-                      {vpnConnCheck.actionable && vpnConnCheck.action_id && !vpnConnCheck.passed && (
-                        <div className="flex items-center gap-2 shrink-0">
-                          <button
-                            onClick={() => handleAction(vpnConnCheck.action_id!)}
-                            disabled={runningAction !== null || !config.openvpn_config_path}
-                            title={!config.openvpn_config_path ? 'Please select a .ovpn file first' : ''}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
-                          >
-                            {runningAction === vpnConnCheck.action_id ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <Play className="w-4 h-4" />
-                            )}
-                            Connect to VPN
-                          </button>
-                          {runningAction === vpnConnCheck.action_id && (
+                      <div className="flex items-center gap-2 shrink-0">
+                        {/* Connect button - shown when not connected */}
+                        {vpnConnCheck.actionable && vpnConnCheck.action_id && !vpnConnCheck.passed && (
+                          <>
                             <button
-                              onClick={() => setRunningAction(null)}
-                              className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                              title="Stop VPN connection attempt"
+                              onClick={() => handleAction(vpnConnCheck.action_id!)}
+                              disabled={runningAction !== null || !config.openvpn_config_path}
+                              title={!config.openvpn_config_path ? 'Please select a .ovpn file first' : ''}
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
                             >
-                              <StopCircle className="w-5 h-5" />
+                              {runningAction === vpnConnCheck.action_id ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Play className="w-4 h-4" />
+                              )}
+                              Connect to VPN
                             </button>
-                          )}
-                        </div>
-                      )}
+                            {runningAction === vpnConnCheck.action_id && (
+                              <button
+                                onClick={() => setRunningAction(null)}
+                                className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                                title="Stop VPN connection attempt"
+                              >
+                                <StopCircle className="w-5 h-5" />
+                              </button>
+                            )}
+                          </>
+                        )}
+                        {/* Disconnect button - shown for CLI method when connected */}
+                        {!isWindows && vpnConnCheck.passed && config.vpn_method === 'openvpn-cli' && (
+                          <button
+                            onClick={() => handleAction('disconnect_vpn')}
+                            disabled={runningAction !== null}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-red-600 hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
+                            title="Disconnect OpenVPN CLI daemon"
+                          >
+                            <StopCircle className="w-4 h-4" />
+                            Disconnect VPN
+                          </button>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>

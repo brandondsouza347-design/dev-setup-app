@@ -57,6 +57,8 @@ export interface UserConfig {
   skip_already_installed: boolean;
   skip_wsl_backup: boolean;
   openvpn_config_path: string | null;
+  tunnelblick_installer_path: string | null;
+  vpn_method: "tunnelblick" | "openvpn-cli" | null;
   git_name: string | null;
   git_email: string | null;
   gitlab_pat: string | null;

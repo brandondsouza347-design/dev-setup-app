@@ -1,0 +1,12 @@
+{
+  "id": "macos_vpn_openvpn_cli_1712692800",
+  "name": "🍎 macOS VPN Setup (OpenVPN CLI)",
+  "description": "Install and connect to VPN using OpenVPN CLI for macOS. Alternative to Tunnelblick for network-restricted environments. Requires: Homebrew installed, .ovpn config file selected in Settings, admin password for sudo access.",
+  "step_ids": [
+    "install_openvpn_cli",
+    "connect_vpn_cli"
+  ],
+  "created_at": 1712692800,
+  "last_run_at": null,
+  "settings": null
+}
