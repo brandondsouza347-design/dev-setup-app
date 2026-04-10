@@ -10,15 +10,29 @@ CONFIG_DIR="$HOME/.openvpn"
 PID_FILE="/tmp/openvpn-dev-setup.pid"
 LOG_FILE="/tmp/openvpn-dev-setup.log"
 
-echo "→ Checking VPN connectivity..."
+check_vpn_status() {
+    SETUP_VPN_METHOD="openvpn-cli" bash "$(dirname "$0")/check_vpn_status.sh" 2>/dev/null && return 0 || return 1
+}
 
-# Fast path — already connected
-if nc -z -w 3 "$VPN_TARGET" "$VPN_PORT" 2>/dev/null; then
-    echo "✓ Already connected to VPN ($VPN_TARGET:$VPN_PORT is reachable)"
-    exit 0
+test_gitlab() {
+    nc -z -w 3 "$VPN_TARGET" "$VPN_PORT" 2>/dev/null && return 0 || return 1
+}
+
+echo "→ Step 1/3: Checking VPN connection status..."
+
+# Check if VPN is already connected
+if check_vpn_status; then
+    echo "✓ OpenVPN daemon already running. Verifying GitLab connectivity..."
+    if test_gitlab; then
+        echo "✓ VPN connected and GitLab is reachable. No action needed."
+        exit 0
+    else
+        echo "⚠ VPN daemon running but GitLab not reachable. Check network routing."
+        exit 1
+    fi
 fi
 
-echo "  VPN not currently connected. Starting OpenVPN daemon..."
+echo "→ Step 2/3: Starting OpenVPN daemon..."
 
 # Find the OpenVPN config file
 if [ -f "$CONFIG_DIR/.current-config" ]; then
@@ -34,14 +48,13 @@ if [ -z "$CONFIG_PATH" ] || [ ! -f "$CONFIG_PATH" ]; then
     exit 1
 fi
 
-echo "→ Using config: $CONFIG_PATH"
+echo "  Using config: $CONFIG_PATH"
 
 # Check if OpenVPN is already running
 if [ -f "$PID_FILE" ]; then
     OLD_PID=$(cat "$PID_FILE")
     if ps -p "$OLD_PID" &>/dev/null; then
-        echo "→ OpenVPN daemon already running (PID: $OLD_PID)"
-        echo "  Stopping existing process..."
+        echo "  OpenVPN process found (PID: $OLD_PID), stopping..."
         sudo kill "$OLD_PID" 2>/dev/null || true
         sleep 2
     fi
@@ -78,11 +91,11 @@ OPENVPN_PID=$(cat "$PID_FILE")
 echo "✓ OpenVPN daemon started (PID: $OPENVPN_PID)"
 
 # Poll for VPN connectivity
-echo "→ Waiting for VPN connection (polling $VPN_TARGET:$VPN_PORT every ${RETRY_INTERVAL}s, max ${MAX_ATTEMPTS} attempts)..."
+echo "→ Step 3/3: Waiting for VPN connection (polling every ${RETRY_INTERVAL}s, max ${MAX_ATTEMPTS} attempts)..."
 
 for i in $(seq 1 $MAX_ATTEMPTS); do
-    if nc -z -w 3 "$VPN_TARGET" "$VPN_PORT" 2>/dev/null; then
-        echo "✓ VPN connected successfully ($VPN_TARGET:$VPN_PORT is reachable)"
+    if check_vpn_status && test_gitlab; then
+        echo "✓ VPN connected successfully (OpenVPN daemon running and GitLab reachable)"
         echo "✓ OpenVPN daemon running in background (PID: $OPENVPN_PID)"
         echo ""
         echo "To disconnect, run: disconnect_vpn_cli.sh"
@@ -99,12 +112,12 @@ for i in $(seq 1 $MAX_ATTEMPTS); do
         exit 1
     fi
 
-    echo "  Attempt $i/$MAX_ATTEMPTS — not yet reachable, retrying in ${RETRY_INTERVAL}s..."
+    echo "  ⏳ Attempt $i/$MAX_ATTEMPTS — waiting for connection... ($((i * RETRY_INTERVAL))s / $((MAX_ATTEMPTS * RETRY_INTERVAL))s)"
     sleep $RETRY_INTERVAL
 done
 
 echo "✗ VPN connection timeout after $((MAX_ATTEMPTS * RETRY_INTERVAL)) seconds"
-echo "  OpenVPN daemon is running but $VPN_TARGET:$VPN_PORT not reachable"
+echo "  OpenVPN daemon is running but connection not established"
 echo "  Check log file: $LOG_FILE"
 echo "  To stop the daemon, run: disconnect_vpn_cli.sh"
 exit 1

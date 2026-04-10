@@ -14,17 +14,32 @@ function Test-GitLabReachable {
     }
 }
 
-# Fast path: already connected
-Write-Output "→ Step 1/2: Checking VPN connectivity..."
-Write-Output "  Testing TCP connection to gitlab.toogoerp.net:443..."
-if (Test-GitLabReachable) {
-    Write-Output "✓ Already connected — gitlab.toogoerp.net:443 is reachable. No VPN action needed."
-    exit 0
+function Test-VpnStatus {
+    $checkScript = Join-Path $PSScriptRoot "check_vpn_status.ps1"
+    if (Test-Path $checkScript) {
+        $result = & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $checkScript 2>&1
+        return $LASTEXITCODE -eq 0
+    }
+    return $false
 }
-Write-Output "  gitlab.toogoerp.net:443 is not reachable — VPN connection required."
 
-# Locate OpenVPN executable
-Write-Output "→ Step 2/2: Launching OpenVPN..."
+# Step 1: Check VPN connection status
+Write-Output "→ Step 1/3: Checking VPN connection status..."
+if (Test-VpnStatus) {
+    Write-Output "  ✓ OpenVPN already connected. Verifying GitLab connectivity..."
+    if (Test-GitLabReachable) {
+        Write-Output "✓ VPN connected and GitLab is reachable. No action needed."
+        exit 0
+    } else {
+        Write-Output "⚠ VPN connected but GitLab not reachable. Check network routing."
+        exit 1
+    }
+}
+
+Write-Output "  OpenVPN is not connected. Launching VPN..."
+
+# Step 2: Locate OpenVPN executable
+Write-Output "→ Step 2/3: Launching OpenVPN..."
 $exeCandidates = @(
     "C:\Program Files\OpenVPN\bin\openvpn-gui.exe",
     "C:\Program Files\OpenVPN Connect\OpenVPNConnect.exe",
@@ -86,13 +101,14 @@ if ($isInConfigDir) {
 
 Write-Output "  OpenVPN process started — waiting for tunnel to establish..."
 
-# Poll for up to 3 minutes (36 × 5s), log every 30s
+# Step 3: Poll for VPN connection
 $maxAttempts = 36
-Write-Output "  Polling gitlab.toogoerp.net:443 every 5s (timeout: 3 minutes)..."
+Write-Output "→ Step 3/3: Waiting for VPN connection (polling every 5s, timeout: 3 minutes)..."
 for ($i = 1; $i -le $maxAttempts; $i++) {
     Start-Sleep -Seconds 5
-    if (Test-GitLabReachable) {
-        Write-Output "✓ VPN tunnel established — gitlab.toogoerp.net:443 reachable after $($i * 5)s."
+    if ((Test-VpnStatus) -and (Test-GitLabReachable)) {
+        Write-Output "✓ VPN connected successfully (OpenVPN GUI connected and GitLab reachable)"
+        Write-Output "  Took $($i * 5) seconds to establish connection."
         exit 0
     }
     if ($i % 6 -eq 0) {

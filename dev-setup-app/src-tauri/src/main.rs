@@ -42,6 +42,7 @@ fn main() {
             commands::install_tunnelblick_manual_prereq,
             commands::install_xcode_clt_prereq,
             commands::install_homebrew_prereq,
+            commands::install_git_prereq,
             commands::connect_vpn_prereq,
             commands::disconnect_vpn_prereq,
             commands::open_terminal,

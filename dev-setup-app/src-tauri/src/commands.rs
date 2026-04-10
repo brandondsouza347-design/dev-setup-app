@@ -807,7 +807,11 @@ pub fn reset_state(state: State<'_, Mutex<AppState>>) -> Result<(), String> {
 
 /// Runs pre-flight checks: internet connection, disk space, required tools.
 #[tauri::command]
-pub async fn check_prerequisites() -> Vec<PrereqCheck> {
+pub async fn check_prerequisites(state: State<'_, Mutex<AppState>>) -> Result<Vec<PrereqCheck>, String> {
+    let config = {
+        state.lock().unwrap().config.clone()
+    };
+
     let mut checks: Vec<PrereqCheck> = Vec::new();
     let os = detect_os();
     log::info!("check_prerequisites: starting pre-flight checks for os={}", os.os);
@@ -822,16 +826,20 @@ pub async fn check_prerequisites() -> Vec<PrereqCheck> {
         checks.push(check_macos_version());
         checks.push(check_xcode_clt());
         checks.push(check_homebrew());
-        checks.push(check_command_available("git", "Git"));
+        checks.push(check_git_command());
         checks.push(check_command_available("curl", "curl"));
         checks.push(check_command_available("bash", "bash"));
         checks.push(check_openvpn_installed(&os.os));
+        #[cfg(target_os = "macos")]
+        checks.push(check_vpn_connection_status(&config).await);
         checks.push(check_vpn_connectivity().await);
     } else if os.os == "windows" {
         checks.push(check_command_available("wsl", "WSL"));
         checks.push(check_command_available("winget", "winget"));
         checks.push(check_command_available("powershell", "PowerShell"));
         checks.push(check_openvpn_installed(&os.os));
+        #[cfg(target_os = "windows")]
+        checks.push(check_vpn_connection_status(&config).await);
         checks.push(check_vpn_connectivity().await);
     }
 
@@ -842,7 +850,7 @@ pub async fn check_prerequisites() -> Vec<PrereqCheck> {
         log::warn!("check_prerequisites: {} check(s) failed — {:?}", failed.len(), failed);
     }
 
-    checks
+    Ok(checks)
 }
 
 #[derive(Serialize)]
@@ -914,6 +922,128 @@ async fn check_vpn_connectivity() -> PrereqCheck {
                 message: "Cannot reach gitlab.toogoerp.net:443. VPN required for GitLab SSH key upload and repository cloning. Click 'Connect to VPN' to proceed.".to_string(),
                 actionable: Some(true),
                 action_id: Some("connect_vpn".to_string()),
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+async fn check_vpn_connection_status(config: &UserConfig) -> PrereqCheck {
+    use std::process::Command;
+    log::info!("check_vpn_connection_status: checking actual VPN connection on macOS");
+
+    let vpn_method = config.vpn_method.as_deref().unwrap_or("tunnelblick");
+
+    let output = Command::new("bash")
+        .arg("scripts/macos/check_vpn_status.sh")
+        .env("SETUP_VPN_METHOD", vpn_method)
+        .output();
+
+    match output {
+        Ok(o) if o.status.success() => {
+            let stdout = String::from_utf8_lossy(&o.stdout);
+            let message = stdout.lines().last().unwrap_or("VPN is connected").to_string();
+            log::info!("check_vpn_connection_status: [PASS] {}", message);
+            PrereqCheck {
+                name: "VPN Connection Status".to_string(),
+                passed: true,
+                warning: false,
+                message,
+                actionable: None,
+                action_id: None,
+            }
+        }
+        Ok(o) => {
+            let stdout = String::from_utf8_lossy(&o.stdout);
+            let stderr = String::from_utf8_lossy(&o.stderr);
+            let message = stdout.lines().last()
+                .or_else(|| stderr.lines().last())
+                .unwrap_or("VPN is not connected")
+                .to_string();
+            log::warn!("check_vpn_connection_status: [WARN] {}", message);
+            PrereqCheck {
+                name: "VPN Connection Status".to_string(),
+                passed: false,
+                warning: true,
+                message: format!("{}. Click 'Connect to VPN' to establish connection.", message),
+                actionable: Some(true),
+                action_id: Some("connect_vpn".to_string()),
+            }
+        }
+        Err(e) => {
+            log::error!("check_vpn_connection_status: [ERROR] {}", e);
+            PrereqCheck {
+                name: "VPN Connection Status".to_string(),
+                passed: false,
+                warning: true,
+                message: format!("Could not check VPN status: {}", e),
+                actionable: None,
+                action_id: None,
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+async fn check_vpn_connection_status(_config: &UserConfig) -> PrereqCheck {
+    use std::process::Command;
+    log::info!("check_vpn_connection_status: checking actual VPN connection on Windows");
+
+    let output = Command::new("powershell")
+        .arg("-NoProfile")
+        .arg("-NonInteractive")
+        .arg("-ExecutionPolicy")
+        .arg("Bypass")
+        .arg("-File")
+        .arg("scripts/windows/check_vpn_status.ps1")
+        .output();
+
+    match output {
+        Ok(o) if o.status.success() => {
+            let stdout = String::from_utf8_lossy(&o.stdout);
+            let message = stdout.lines()
+                .filter(|line| line.starts_with("✓") || line.starts_with("✗"))
+                .last()
+                .unwrap_or("OpenVPN is connected")
+                .to_string();
+            log::info!("check_vpn_connection_status: [PASS] {}", message);
+            PrereqCheck {
+                name: "VPN Connection Status".to_string(),
+                passed: true,
+                warning: false,
+                message,
+                actionable: None,
+                action_id: None,
+            }
+        }
+        Ok(o) => {
+            let stdout = String::from_utf8_lossy(&o.stdout);
+            let stderr = String::from_utf8_lossy(&o.stderr);
+            let message = stdout.lines()
+                .filter(|line| line.starts_with("✓") || line.starts_with("✗"))
+                .last()
+                .or_else(|| stderr.lines().last())
+                .unwrap_or("OpenVPN is not connected")
+                .to_string();
+            log::warn!("check_vpn_connection_status: [WARN] {}", message);
+            PrereqCheck {
+                name: "VPN Connection Status".to_string(),
+                passed: false,
+                warning: true,
+                message: format!("{}. Click 'Connect to VPN' to establish connection.", message),
+                actionable: Some(true),
+                action_id: Some("connect_vpn".to_string()),
+            }
+        }
+        Err(e) => {
+            log::error!("check_vpn_connection_status: [ERROR] {}", e);
+            PrereqCheck {
+                name: "VPN Connection Status".to_string(),
+                passed: false,
+                warning: true,
+                message: format!("Could not check VPN status: {}", e),
+                actionable: None,
+                action_id: None,
             }
         }
     }
@@ -1251,6 +1381,67 @@ fn check_homebrew() -> PrereqCheck {
     }
 }
 
+fn check_git_command() -> PrereqCheck {
+    #[cfg(target_os = "macos")]
+    {
+        // Check if Git is available via which or common paths
+        let via_which = which::which("git");
+        let found_by_which = via_which.is_ok();
+        let found_by_fallback = !found_by_which && (
+            std::path::Path::new("/usr/bin/git").exists() ||
+            std::path::Path::new("/opt/homebrew/bin/git").exists() ||
+            std::path::Path::new("/usr/local/bin/git").exists()
+        );
+        let available = found_by_which || found_by_fallback;
+
+        if available {
+            // Get Git version
+            if let Ok(version_output) = std::process::Command::new("git").arg("--version").output() {
+                if let Ok(version_str) = String::from_utf8(version_output.stdout) {
+                    let version = version_str.trim();
+                    let git_path = via_which.ok().map(|p| p.display().to_string())
+                        .unwrap_or_else(|| "unknown path".to_string());
+                    log::info!("check_git_command: [PASS] Git found — {} at {}", version, git_path);
+                    return PrereqCheck {
+                        name: "Git".to_string(),
+                        passed: true,
+                        warning: false,
+                        message: format!("Git is available — {}", version),
+                        actionable: None,
+                        action_id: None,
+                    };
+                }
+            }
+
+            log::info!("check_git_command: [PASS] Git found but version check failed");
+            return PrereqCheck {
+                name: "Git".to_string(),
+                passed: true,
+                warning: false,
+                message: "Git is available".to_string(),
+                actionable: None,
+                action_id: None,
+            };
+        }
+
+        log::warn!("check_git_command: [FAIL] Git not found in PATH or common locations");
+        PrereqCheck {
+            name: "Git".to_string(),
+            passed: false,
+            warning: false,
+            message: "Git not found. Required for version control and cloning repositories. Click 'Install Git' to install via Homebrew.".to_string(),
+            actionable: Some(true),
+            action_id: Some("install_git".to_string()),
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        // On Windows/Linux, use generic command check (Git is installed via WSL or system package manager)
+        check_command_available("git", "Git")
+    }
+}
+
 /// Executes the OpenVPN installation script as a pre-check action.
 /// Windows: installs OpenVPN via winget
 /// macOS: installs Tunnelblick via Homebrew
@@ -1473,6 +1664,48 @@ pub async fn install_homebrew_prereq(
     match result {
         Ok(_) => {
             emit_frontend_log(&window, "__prereq_action__", "✓ Homebrew installed successfully", "success");
+            Ok(())
+        }
+        Err(e) => {
+            emit_frontend_log(&window, "__prereq_action__", &format!("✗ Installation failed: {}", e), "error");
+            Err(e)
+        }
+    }
+}
+
+/// Executes the Git installation as a pre-check action (macOS only).
+#[tauri::command]
+pub async fn install_git_prereq(
+    window: WebviewWindow,
+    app_handle: AppHandle,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<(), String> {
+    log::info!("install_git_prereq: executing Git installation for macOS");
+    emit_frontend_log(&window, "__prereq_action__", "▶ Install Git", "info");
+    emit_frontend_log(&window, "__prereq_action__", "Installing Git version control system for macOS", "info");
+
+    // Create a minimal SetupStep for script execution
+    let step = SetupStep {
+        id: "install_git_mac".to_string(),
+        title: "Install Git".to_string(),
+        description: "Installing Git version control system via Homebrew or Xcode Command Line Tools".to_string(),
+        platform: crate::orchestrator::Platform::MacOs,
+        category: crate::orchestrator::StepCategory::Prerequisites,
+        required: true,
+        estimated_minutes: 2,
+        rollback_steps: vec![],
+    };
+
+    let config = {
+        let s = state.lock().unwrap();
+        s.config.clone()
+    };
+
+    let result = execute_script_with_retry(window.clone(), app_handle.clone(), &step, &config).await;
+
+    match result {
+        Ok(_) => {
+            emit_frontend_log(&window, "__prereq_action__", "✓ Git installed successfully", "success");
             Ok(())
         }
         Err(e) => {

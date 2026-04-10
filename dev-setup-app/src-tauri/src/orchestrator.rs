@@ -951,6 +951,7 @@ fn build_script_command(
         // macOS
         "xcode_clt"     => ("macos", "install_xcode_clt.sh", "bash", vec![]),
         "homebrew"      => ("macos", "install_homebrew.sh",  "bash", vec![]),
+        "install_git_mac" => ("macos", "install_git.sh",     "bash", vec![]),
         "pyenv"         => ("macos", "setup_pyenv.sh",        "bash", vec![]),
         "nvm"           => ("macos", "setup_nvm.sh",          "bash", vec![]),
         "postgres_mac"  => ("macos", "setup_postgres.sh",     "bash", vec![]),

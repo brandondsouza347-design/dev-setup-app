@@ -353,6 +353,9 @@ export function useSetup(): UseSetupReturn {
       case 'install_homebrew':
         command = 'install_homebrew_prereq';
         break;
+      case 'install_git':
+        command = 'install_git_prereq';
+        break;
       case 'connect_vpn':
         command = 'connect_vpn_prereq';
         break;
