@@ -358,8 +358,8 @@ export const PrereqScreen: React.FC<Props> = ({
                             </div>
                           );
                         })()}
-                        {/* .ovpn file picker - always show when VPN client is installed */}
-                        {openvpnCheck.passed && (
+                        {/* .ovpn file picker - show when VPN client is installed but not connected */}
+                        {openvpnCheck.passed && !vpnConnectionCheck?.passed && (
                           <div className="mt-2 p-2 rounded bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
                             <div className="flex items-center justify-between gap-2">
                               <div className="flex-1 min-w-0">
@@ -430,15 +430,19 @@ export const PrereqScreen: React.FC<Props> = ({
                             )}
                           </>
                         )}
-                        {/* Disconnect button - shown for CLI method when connected */}
-                        {!isWindows && vpnConnectionCheck.passed && config.vpn_method === 'openvpn-cli' && (
+                        {/* Disconnect button - shown when VPN is connected */}
+                        {vpnConnectionCheck.passed && (
                           <button
                             onClick={() => handleAction('disconnect_vpn')}
                             disabled={runningAction !== null}
                             className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-red-600 hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
-                            title="Disconnect OpenVPN CLI daemon"
+                            title="Disconnect VPN"
                           >
-                            <StopCircle className="w-4 h-4" />
+                            {runningAction === 'disconnect_vpn' ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <StopCircle className="w-4 h-4" />
+                            )}
                             Disconnect VPN
                           </button>
                         )}

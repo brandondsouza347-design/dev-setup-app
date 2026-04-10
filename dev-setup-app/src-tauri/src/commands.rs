@@ -807,7 +807,10 @@ pub fn reset_state(state: State<'_, Mutex<AppState>>) -> Result<(), String> {
 
 /// Runs pre-flight checks: internet connection, disk space, required tools.
 #[tauri::command]
-pub async fn check_prerequisites(state: State<'_, Mutex<AppState>>) -> Result<Vec<PrereqCheck>, String> {
+pub async fn check_prerequisites(
+    app_handle: AppHandle,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<Vec<PrereqCheck>, String> {
     let config = {
         state.lock().unwrap().config.clone()
     };
@@ -831,7 +834,7 @@ pub async fn check_prerequisites(state: State<'_, Mutex<AppState>>) -> Result<Ve
         checks.push(check_command_available("bash", "bash"));
         checks.push(check_openvpn_installed(&os.os));
         #[cfg(target_os = "macos")]
-        checks.push(check_vpn_connection_status(&config).await);
+        checks.push(check_vpn_connection_status(&app_handle, &config).await);
         checks.push(check_vpn_connectivity().await);
     } else if os.os == "windows" {
         checks.push(check_command_available("wsl", "WSL"));
@@ -839,7 +842,7 @@ pub async fn check_prerequisites(state: State<'_, Mutex<AppState>>) -> Result<Ve
         checks.push(check_command_available("powershell", "PowerShell"));
         checks.push(check_openvpn_installed(&os.os));
         #[cfg(target_os = "windows")]
-        checks.push(check_vpn_connection_status(&config).await);
+        checks.push(check_vpn_connection_status(&app_handle, &config).await);
         checks.push(check_vpn_connectivity().await);
     }
 
@@ -928,14 +931,30 @@ async fn check_vpn_connectivity() -> PrereqCheck {
 }
 
 #[cfg(target_os = "macos")]
-async fn check_vpn_connection_status(config: &UserConfig) -> PrereqCheck {
+async fn check_vpn_connection_status(app_handle: &AppHandle, config: &UserConfig) -> PrereqCheck {
     use std::process::Command;
     log::info!("check_vpn_connection_status: checking actual VPN connection on macOS");
+
+    let script_path_result = script_path(app_handle, "macos/check_vpn_status.sh");
+    let script_path_str = match script_path_result {
+        Ok(path) => path.to_string_lossy().to_string(),
+        Err(e) => {
+            log::error!("check_vpn_connection_status: [ERROR] {}", e);
+            return PrereqCheck {
+                name: "VPN Connection Status".to_string(),
+                passed: false,
+                warning: true,
+                message: "Could not check VPN status (check script unavailable)".to_string(),
+                actionable: Some(true),
+                action_id: Some("connect_vpn".to_string()),
+            };
+        }
+    };
 
     let vpn_method = config.vpn_method.as_deref().unwrap_or("tunnelblick");
 
     let output = Command::new("bash")
-        .arg("scripts/macos/check_vpn_status.sh")
+        .arg(&script_path_str)
         .env("SETUP_VPN_METHOD", vpn_method)
         .output();
 
@@ -997,16 +1016,41 @@ async fn check_vpn_connection_status(config: &UserConfig) -> PrereqCheck {
 }
 
 #[cfg(target_os = "windows")]
-async fn check_vpn_connection_status(_config: &UserConfig) -> PrereqCheck {
+async fn check_vpn_connection_status(app_handle: &AppHandle, _config: &UserConfig) -> PrereqCheck {
     log::info!("check_vpn_connection_status: checking actual VPN connection on Windows");
+
+    let script_path_result = script_path(app_handle, "windows/check_vpn_status.ps1");
+    let path_str = match script_path_result {
+        Ok(path) => {
+            let s = path.to_string_lossy().to_string();
+            // Strip the \\?\ extended-length prefix emitted by Rust's PathBuf on Windows
+            if s.starts_with(r"\\?\") { s[4..].to_string() } else { s }
+        }
+        Err(e) => {
+            log::error!("check_vpn_connection_status: [ERROR] {}", e);
+            return PrereqCheck {
+                name: "VPN Connection Status".to_string(),
+                passed: false,
+                warning: true,
+                message: "Could not check VPN status (check script unavailable)".to_string(),
+                actionable: Some(true),
+                action_id: Some("connect_vpn".to_string()),
+            };
+        }
+    };
+
+    // ENCODING FIX: Use Get-Content -Encoding UTF8 to force correct UTF-8 parsing
+    // and handle spaces in the path with single-quote escaping
+    let escaped = path_str.replace('\'', "''");
+    let ps_command = format!("& ([scriptblock]::Create((Get-Content -LiteralPath '{}' -Encoding UTF8 -Raw)))", escaped);
 
     let mut cmd = std::process::Command::new("powershell");
     cmd.arg("-NoProfile")
         .arg("-NonInteractive")
         .arg("-ExecutionPolicy")
         .arg("Bypass")
-        .arg("-File")
-        .arg("scripts/windows/check_vpn_status.ps1");
+        .arg("-Command")
+        .arg(&ps_command);
 
     // Hide the PowerShell window - MUST be set before .output()
     #[cfg(target_os = "windows")]
@@ -1110,6 +1154,28 @@ fn check_fallback_path(cmd: &str) -> bool {
     }
     #[allow(unreachable_code)]
     false
+}
+
+/// Resolves the path to a bundled script relative to the app resources directory.
+fn script_path(app_handle: &tauri::AppHandle, script_name: &str) -> Result<std::path::PathBuf, String> {
+    use tauri::Manager;
+    let resource_dir = app_handle
+        .path()
+        .resource_dir()
+        .map_err(|e| e.to_string())?;
+    let path = resource_dir.join("scripts").join(script_name);
+    log::info!("script_path: resource_dir='{}' resolved='{}'", resource_dir.display(), path.display());
+    if !path.exists() {
+        let msg = format!(
+            "Script not found: {}\n\nLooked in resource dir: {}\nExpected at: {}\n\nThis usually means the app was not rebuilt after the last change, or the installer did not bundle the scripts correctly. Please rebuild and reinstall.",
+            script_name,
+            resource_dir.display(),
+            path.display()
+        );
+        log::error!("{}", msg);
+        return Err(msg);
+    }
+    Ok(path)
 }
 
 fn check_disk_space() -> PrereqCheck {
@@ -1878,7 +1944,7 @@ pub async fn install_tunnelblick_manual_prereq(
     }
 }
 
-/// Disconnect OpenVPN CLI daemon (macOS only)
+/// Disconnect VPN (Windows: OpenVPN GUI, macOS: Tunnelblick or OpenVPN CLI based on vpn_method)
 #[tauri::command]
 pub async fn disconnect_vpn_prereq(
     window: WebviewWindow,
@@ -1887,19 +1953,47 @@ pub async fn disconnect_vpn_prereq(
 ) -> Result<(), String> {
     let os = detect_os();
 
-    if os.os != "macos" {
-        return Err("VPN disconnect is only available on macOS".to_string());
-    }
+    let (step_id, title, description, platform) = if os.os == "windows" {
+        (
+            "disconnect_vpn",
+            "Disconnect VPN",
+            "Disconnecting OpenVPN connection",
+            crate::orchestrator::Platform::Windows,
+        )
+    } else if os.os == "macos" {
+        // Check vpn_method to determine which disconnect script to use
+        let vpn_method = {
+            let s = state.lock().unwrap();
+            s.config.vpn_method.clone()
+        };
 
-    log::info!("disconnect_vpn_prereq: disconnecting OpenVPN CLI");
-    emit_frontend_log(&window, "__prereq_action__", "▶ Disconnect VPN", "info");
-    emit_frontend_log(&window, "__prereq_action__", "Stopping OpenVPN CLI daemon", "info");
+        match vpn_method.as_deref() {
+            Some("openvpn-cli") => (
+                "disconnect_vpn_cli",
+                "Disconnect VPN",
+                "Stopping OpenVPN CLI background daemon",
+                crate::orchestrator::Platform::MacOs,
+            ),
+            _ => (
+                "disconnect_vpn_tunnelblick",
+                "Disconnect VPN",
+                "Disconnecting Tunnelblick VPN connection",
+                crate::orchestrator::Platform::MacOs,
+            ),
+        }
+    } else {
+        return Err("VPN disconnect is not supported on this OS".to_string());
+    };
+
+    log::info!("disconnect_vpn_prereq: disconnecting VPN on {} using {}", os.os, step_id);
+    emit_frontend_log(&window, "__prereq_action__", &format!("▶ {}", title), "info");
+    emit_frontend_log(&window, "__prereq_action__", description, "info");
 
     let step = SetupStep {
-        id: "disconnect_vpn_cli".to_string(),
-        title: "Disconnect VPN".to_string(),
-        description: "Stopping OpenVPN CLI background daemon".to_string(),
-        platform: crate::orchestrator::Platform::MacOs,
+        id: step_id.to_string(),
+        title: title.to_string(),
+        description: description.to_string(),
+        platform,
         category: crate::orchestrator::StepCategory::Network,
         required: false,
         estimated_minutes: 1,
@@ -1923,6 +2017,95 @@ pub async fn disconnect_vpn_prereq(
             Err(e)
         }
     }
+}
+
+// ─── Configuration Persistence ──────────────────────────────────────────────
+
+/// Get the path to the user config file
+fn get_config_file_path(app_handle: &AppHandle) -> Result<PathBuf, String> {
+    use tauri::Manager;
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?;
+
+    fs::create_dir_all(&app_data_dir)
+        .map_err(|e| format!("Failed to create app data directory: {}", e))?;
+
+    Ok(app_data_dir.join("config.json"))
+}
+
+/// Load user configuration from disk (called on app startup)
+pub fn load_user_config(app_handle: &AppHandle) -> UserConfig {
+    let mut config = match get_config_file_path(app_handle) {
+        Ok(config_path) => {
+            if config_path.exists() {
+                match fs::read_to_string(&config_path) {
+                    Ok(content) => {
+                        match serde_json::from_str::<UserConfig>(&content) {
+                            Ok(parsed_config) => {
+                                log::info!("Loaded user config from {}", config_path.display());
+                                parsed_config
+                            }
+                            Err(e) => {
+                                log::warn!("Failed to parse config file: {} - using defaults", e);
+                                UserConfig::default()
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to read config file: {} - using defaults", e);
+                        UserConfig::default()
+                    }
+                }
+            } else {
+                log::info!("No config file found at {} - using defaults", config_path.display());
+                UserConfig::default()
+            }
+        }
+        Err(e) => {
+            log::error!("Failed to get config file path: {} - using defaults", e);
+            UserConfig::default()
+        }
+    };
+
+    // Validate that saved file paths still exist, clear if they don't
+    if let Some(ref ovpn_path) = config.openvpn_config_path {
+        if !std::path::Path::new(ovpn_path).exists() {
+            log::warn!("Saved OpenVPN config file not found: {} - clearing from config", ovpn_path);
+            config.openvpn_config_path = None;
+        }
+    }
+
+    if let Some(ref tunnelblick_path) = config.tunnelblick_installer_path {
+        if !std::path::Path::new(tunnelblick_path).exists() {
+            log::warn!("Saved Tunnelblick installer not found: {} - clearing from config", tunnelblick_path);
+            config.tunnelblick_installer_path = None;
+        }
+    }
+
+    if let Some(ref wsl_tar) = config.wsl_tar_path {
+        if !std::path::Path::new(wsl_tar).exists() {
+            log::warn!("Saved WSL tar file not found: {} - clearing from config", wsl_tar);
+            config.wsl_tar_path = None;
+        }
+    }
+
+    config
+}
+
+/// Save user configuration to disk
+fn persist_user_config(app_handle: &AppHandle, config: &UserConfig) -> Result<(), String> {
+    let config_path = get_config_file_path(app_handle)?;
+
+    let json = serde_json::to_string_pretty(config)
+        .map_err(|e| format!("Failed to serialize config: {}", e))?;
+
+    fs::write(&config_path, json)
+        .map_err(|e| format!("Failed to write config file: {}", e))?;
+
+    log::info!("Persisted user config to {}", config_path.display());
+    Ok(())
 }
 
 /// Opens the system terminal (fallback for manual steps).
@@ -1987,6 +2170,7 @@ pub fn reset_config_to_defaults(
 /// Saves updated user configuration.
 #[tauri::command]
 pub fn save_config(
+    app_handle: AppHandle,
     input: ConfigInput,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<(), String> {
@@ -2046,6 +2230,11 @@ pub fn save_config(
         aws_secret_access_key: input.aws_secret_access_key.filter(|s| !s.trim().is_empty()),
         wsl_backup_path: input.wsl_backup_path,
     };
+
+    // Persist to disk
+    persist_user_config(&app_handle, &s.config)?;
+
+    log::info!("Config updated and persisted");
     Ok(())
 }
 

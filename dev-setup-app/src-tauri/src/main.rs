@@ -23,9 +23,6 @@ fn main() {
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
-        .manage(Mutex::new(AppState::default()))
-        .manage(CancelState::new())
-        .manage(admin_agent::AdminAgentState::new())
         .invoke_handler(tauri::generate_handler![
             commands::detect_os,
             commands::get_setup_steps,
@@ -71,16 +68,31 @@ fn main() {
             commands::execute_workflow,
             commands::create_macos_vpn_workflow_template,
         ])
-        .setup(|_app| {
+        .setup(|app| {
             log::info!(
                 "dev-setup-app starting — OS={} ARCH={}",
                 std::env::consts::OS,
                 std::env::consts::ARCH
             );
+
+            // Load persisted config from disk with validation
+            let config = commands::load_user_config(&app.handle());
+            log::info!("Initialized with config: openvpn_config_path={:?}", config.openvpn_config_path);
+
+            let initial_state = AppState {
+                config,
+                ..AppState::default()
+            };
+
+            // Initialize state management
+            app.manage(Mutex::new(initial_state));
+            app.manage(CancelState::new());
+            app.manage(admin_agent::AdminAgentState::new());
+
             #[cfg(debug_assertions)]
             {
                 use tauri::Manager;
-                let window = _app.get_webview_window("main").unwrap();
+                let window = app.get_webview_window("main").unwrap();
                 window.open_devtools();
             }
             Ok(())

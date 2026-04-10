@@ -976,6 +976,7 @@ fn build_script_command(
         // Windows GitLab onboarding track
         "install_openvpn"      => ("windows", "install_openvpn.ps1",           "powershell", vec![]),
         "connect_vpn"          => ("windows", "connect_vpn.ps1",               "powershell", vec![]),
+        "disconnect_vpn"       => ("windows", "disconnect_vpn.ps1",            "powershell", vec![]),
         "gitlab_ssh"           => ("windows", "setup_gitlab_ssh.sh",           "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
         "clone_repo"           => ("windows", "clone_repo.sh",                 "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
         "pyenv_local"          => ("windows", "pyenv_local.sh",                "wsl",        vec!["-d".to_string(), "ERC".to_string(), "bash".to_string()]),
@@ -998,6 +999,7 @@ fn build_script_command(
         "connect_vpn_mac"         => ("macos", "connect_vpn.sh",         "bash", vec![]),
         "connect_vpn_cli"         => ("macos", "connect_vpn_cli.sh",     "bash", vec![]),
         "disconnect_vpn_cli"      => ("macos", "disconnect_vpn_cli.sh",  "bash", vec![]),
+        "disconnect_vpn_tunnelblick" => ("macos", "disconnect_vpn_tunnelblick.sh", "bash", vec![]),
         "gitlab_ssh_mac"          => ("macos", "setup_gitlab_ssh.sh",    "bash", vec![]),
         "clone_repo_mac"          => ("macos", "clone_repo.sh",          "bash", vec![]),
         "pyenv_local_mac"         => ("macos", "pyenv_local.sh",         "bash", vec![]),
