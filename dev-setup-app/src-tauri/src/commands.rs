@@ -1001,14 +1001,22 @@ async fn check_vpn_connection_status(_config: &UserConfig) -> PrereqCheck {
     use std::process::Command;
     log::info!("check_vpn_connection_status: checking actual VPN connection on Windows");
 
-    let output = Command::new("powershell")
-        .arg("-NoProfile")
+    let mut cmd = Command::new("powershell");
+    cmd.arg("-NoProfile")
         .arg("-NonInteractive")
         .arg("-ExecutionPolicy")
         .arg("Bypass")
         .arg("-File")
-        .arg("scripts/windows/check_vpn_status.ps1")
-        .output();
+        .arg("scripts/windows/check_vpn_status.ps1");
+    
+    // Hide the PowerShell window
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+    
+    let output = cmd.output();
 
     match output {
         Ok(o) if o.status.success() => {

@@ -22,8 +22,69 @@ if check_vpn_status; then
     fi
 fi
 
-echo "→ Step 2/3: Opening Tunnelblick..."
+echo "→ Step 2/3: Launching Tunnelblick and connecting..."
 open -a Tunnelblick 2>/dev/null || true
+
+# Wait for Tunnelblick to launch
+sleep 2
+
+# Disconnect any existing connections first to avoid conflicts
+echo "  Checking for existing connections..."
+DISCONNECT_RESULT=$(osascript -e 'tell application "Tunnelblick"
+    try
+        set configCount to count configurations
+        if configCount is 0 then
+            return "NO_CONFIGS"
+        end if
+
+        set disconnectedAny to false
+        repeat with cfg in configurations
+            set cfgState to state of cfg
+            if cfgState contains "CONNECTED" then
+                disconnect cfg
+                set disconnectedAny to true
+            end if
+        end repeat
+
+        if disconnectedAny then
+            return "DISCONNECTED_EXISTING"
+        else
+            return "NONE_CONNECTED"
+        end if
+    on error errMsg
+        return "ERROR:" & errMsg
+    end try
+end tell' 2>/dev/null || echo "ERROR")
+
+if [[ "$DISCONNECT_RESULT" == "DISCONNECTED_EXISTING" ]]; then
+    echo "  ✓ Disconnected existing VPN connection"
+    sleep 2  # Wait for disconnection to complete
+elif [[ "$DISCONNECT_RESULT" == "NONE_CONNECTED" ]]; then
+    echo "  ✓ No existing connections to disconnect"
+fi
+
+# Automatically connect to the first available configuration
+echo "  Triggering VPN connection..."
+CONNECT_RESULT=$(osascript -e 'tell application "Tunnelblick"
+    try
+        set configCount to count configurations
+        if configCount is 0 then
+            error "No configurations available"
+        end if
+
+        -- Connect to the first configuration
+        connect (first configuration)
+        return "CONNECTION_INITIATED"
+    on error errMsg
+        return "ERROR:" & errMsg
+    end try
+end tell' 2>/dev/null || echo "ERROR")
+
+if [[ "$CONNECT_RESULT" == "CONNECTION_INITIATED" ]]; then
+    echo "  ✓ Connection request sent to Tunnelblick"
+else
+    echo "  ⚠ Could not auto-connect via AppleScript (connection may need manual approval)"
+fi
 
 MAX=36
 echo "→ Step 3/3: Waiting for VPN connection (up to $((MAX * 5))s)..."

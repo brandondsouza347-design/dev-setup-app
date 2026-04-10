@@ -4,13 +4,13 @@ $ErrorActionPreference = 'Stop'
 Write-Output "→ Checking OpenVPN connection status..."
 
 # Method 1: Check if OpenVPN GUI process is running
-$openvpnProcess = Get-Process -Name "openvpn-gui" -ErrorAction SilentlyContinue
+$openvpnProcess = Get-Process -Name "openvpn-gui" -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $openvpnProcess) {
     Write-Output "✗ OpenVPN GUI is not running"
     exit 1
 }
 
-Write-Output "  ✓ OpenVPN GUI is running (PID: $($openvpnProcess.Id))"
+Write-Output "✓ OpenVPN GUI is running (PID: $($openvpnProcess.Id))"
 
 # Method 2: Check for OpenVPN TAP adapter with active connection
 Write-Output "  Checking TAP adapter status..."
