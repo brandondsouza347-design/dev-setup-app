@@ -1,6 +1,6 @@
 // components/SettingsScreen.tsx — Configure installation parameters
 import React, { useState, useEffect } from 'react';
-import { Save, ChevronLeft, ChevronRight, FolderOpen, AlertTriangle, ExternalLink, Bookmark, Trash2, Upload } from 'lucide-react';
+import { Save, ChevronLeft, ChevronRight, FolderOpen, AlertTriangle, ExternalLink, Bookmark, Trash2, Upload, RotateCcw } from 'lucide-react';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import type { UserConfig, WizardPage, OsInfo, ConfigProfile } from '../types';
@@ -21,18 +21,19 @@ export const SettingsScreen: React.FC<Props> = ({ config, osInfo, onUpdate, onSa
   const [loadingProfiles, setLoadingProfiles] = useState(true);
 
   const isWindows = osInfo?.os === 'windows';
+  const isMac = osInfo?.os === 'macos';
 
   // Check if backup path and install path overlap (dangerous - backup will be deleted on revert)
   const checkPathOverlap = (): boolean => {
     if (!isWindows || !config.wsl_backup_path || !config.wsl_install_dir) return false;
-    
+
     const normalizePath = (path: string) => path.toLowerCase().replace(/\\/g, '/').replace(/\/+$/, '');
     const backup = normalizePath(config.wsl_backup_path);
     const install = normalizePath(config.wsl_install_dir);
-    
+
     // Check if either path is inside the other
-    return backup === install || 
-           backup.startsWith(install + '/') || 
+    return backup === install ||
+           backup.startsWith(install + '/') ||
            install.startsWith(backup + '/');
   };
 
@@ -70,7 +71,7 @@ export const SettingsScreen: React.FC<Props> = ({ config, osInfo, onUpdate, onSa
       );
       if (!proceed) return;
     }
-    
+
     setSaving(true);
     try {
       await onSave(config);
@@ -151,6 +152,23 @@ export const SettingsScreen: React.FC<Props> = ({ config, osInfo, onUpdate, onSa
       await loadProfiles();
     } catch (err) {
       alert(`Failed to delete profile: ${err}`);
+    }
+  };
+
+  const handleResetToDefaults = async () => {
+    if (!confirm('Reset all settings to default values?\n\nThis will:\n- Reset all configuration to factory defaults\n- NOT delete saved profiles\n- Require you to click Save to persist changes\n\nContinue?')) return;
+
+    try {
+      await invoke('reset_config_to_defaults');
+      // Reload the config from backend
+      const defaultConfig = await invoke<UserConfig>('get_config');
+      // Update each field to trigger UI updates
+      Object.entries(defaultConfig).forEach(([key, value]) => {
+        onUpdate(key as keyof UserConfig, value as string);
+      });
+      setSaved(false);
+    } catch (err) {
+      alert(`Failed to reset config: ${err}`);
     }
   };
 
@@ -317,6 +335,28 @@ export const SettingsScreen: React.FC<Props> = ({ config, osInfo, onUpdate, onSa
             />
           </Field>
         </Section>
+
+        {/* macOS VPN Configuration */}
+        {isMac && (
+          <Section title="macOS VPN Configuration">
+            <Field label="Tunnelblick Remote URL" hint="Direct download URL for TunnelBlick installer (GitHub, GitLab, etc.)">
+              <input
+                type="text"
+                value={config.tunnelblick_remote_url ?? ''}
+                onChange={(e) => update('tunnelblick_remote_url', e.target.value || null)}
+                className="input"
+                placeholder="https://github.com/.../Tunnelblick_4.0.1_build_5971.dmg"
+              />
+            </Field>
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 text-blue-800 dark:text-blue-300 text-sm">
+              <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+              <span>
+                The app will automatically try to download TunnelBlick from this URL first.
+                If download fails, it falls back to Homebrew → GitHub → SourceForge → OpenVPN CLI.
+              </span>
+            </div>
+          </Section>
+        )}
 
         {/* Behaviour */}
         <Section title="Behaviour">
@@ -502,14 +542,24 @@ export const SettingsScreen: React.FC<Props> = ({ config, osInfo, onUpdate, onSa
 
       {/* Footer */}
       <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-sm disabled:opacity-50 transition-colors"
-        >
-          <Save className="w-4 h-4" />
-          {saving ? 'Saving…' : saved ? '✓ Saved' : 'Save'}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-sm disabled:opacity-50 transition-colors"
+          >
+            <Save className="w-4 h-4" />
+            {saving ? 'Saving…' : saved ? '✓ Saved' : 'Save'}
+          </button>
+          <button
+            onClick={handleResetToDefaults}
+            className="flex items-center gap-2 px-4 py-2 border border-red-300 dark:border-red-600 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-sm transition-colors"
+            title="Reset all settings to factory defaults"
+          >
+            <RotateCcw className="w-4 h-4" />
+            Reset to Defaults
+          </button>
+        </div>
         <button
           onClick={async () => { await handleSave(); onNext('wizard'); }}
           className="flex items-center gap-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors"

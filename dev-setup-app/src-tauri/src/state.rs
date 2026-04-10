@@ -6,6 +6,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 // Import encryption functions
 use crate::security::{encrypt_sensitive, decrypt_sensitive};
 
+// Default value for tunnelblick_remote_url when deserializing old configs
+fn default_tunnelblick_url() -> Option<String> {
+    Some("https://github.com/brandondsouza347-design/dev-setup-app/releases/download/v2.7.0/Tunnelblick_4.0.1_build_5971.dmg".to_string())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum StepStatus {
@@ -68,7 +73,7 @@ pub struct UserConfig {
     pub openvpn_config_path: Option<String>,
     #[serde(default)]
     pub tunnelblick_installer_path: Option<String>,
-    #[serde(default)]
+    #[serde(default = "default_tunnelblick_url")]
     pub tunnelblick_remote_url: Option<String>,
     #[serde(default)]
     pub vpn_method: Option<String>,

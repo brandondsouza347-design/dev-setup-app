@@ -45,11 +45,45 @@ case "$FILE_EXT" in
         echo "→ Step 3/3: Installing to /Applications..."
         if [ -d "/Applications/Tunnelblick.app" ]; then
             echo "  Removing existing Tunnelblick installation..."
-            rm -rf "/Applications/Tunnelblick.app"
+            if rm -rf "/Applications/Tunnelblick.app" 2>/dev/null; then
+                echo "  ✓ Old version removed"
+            else
+                echo "  (requires admin privileges)"
+                if osascript -e 'do shell script "rm -rf /Applications/Tunnelblick.app" with administrator privileges' 2>/dev/null; then
+                    echo "  ✓ Old version removed"
+                else
+                    echo "  ✗ Failed to remove old version"
+                    hdiutil detach "$MOUNT_POINT" -quiet || true
+                    exit 1
+                fi
+            fi
         fi
 
-        cp -R "$APP_PATH" /Applications/
-        echo "✓ Tunnelblick installed to /Applications/"
+        if cp -R "$APP_PATH" /Applications/ 2>/dev/null; then
+            echo "✓ Tunnelblick installed to /Applications/"
+        else
+            echo "  (requires admin privileges)"
+            if osascript -e "do shell script \"cp -R '$APP_PATH' /Applications/\" with administrator privileges" 2>/dev/null; then
+                echo "✓ Tunnelblick installed to /Applications/"
+            else
+                echo "✗ Failed to install Tunnelblick"
+                hdiutil detach "$MOUNT_POINT" -quiet || true
+                exit 1
+            fi
+        fi
+
+        # Remove Gatekeeper quarantine attribute
+        echo "→ Removing quarantine attribute..."
+        if xattr -cr /Applications/Tunnelblick.app 2>/dev/null; then
+            echo "✓ Gatekeeper quarantine removed"
+        else
+            echo "  (requires admin privileges)"
+            if osascript -e 'do shell script "xattr -cr /Applications/Tunnelblick.app" with administrator privileges' 2>/dev/null; then
+                echo "✓ Gatekeeper quarantine removed"
+            else
+                echo "⚠ Could not remove quarantine attribute - you may need to right-click and select Open the first time"
+            fi
+        fi
 
         # Unmount DMG
         echo "→ Unmounting DMG..."
@@ -66,6 +100,19 @@ case "$FILE_EXT" in
 
         if [ $? -eq 0 ]; then
             echo "✓ PKG installation completed"
+
+            # Remove Gatekeeper quarantine attribute
+            echo "→ Removing quarantine attribute..."
+            if xattr -cr /Applications/Tunnelblick.app 2>/dev/null; then
+                echo "✓ Gatekeeper quarantine removed"
+            else
+                echo "  (requires admin privileges)"
+                if osascript -e 'do shell script "xattr -cr /Applications/Tunnelblick.app" with administrator privileges' 2>/dev/null; then
+                    echo "✓ Gatekeeper quarantine removed"
+                else
+                    echo "⚠ Could not remove quarantine attribute - you may need to right-click and select Open the first time"
+                fi
+            fi
         else
             echo "✗ PKG installation failed"
             exit 1

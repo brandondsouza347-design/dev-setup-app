@@ -47,6 +47,7 @@ fn main() {
             commands::open_terminal,
             commands::get_config,
             commands::save_config,
+            commands::reset_config_to_defaults,
             commands::get_revert_steps,
             commands::start_revert,
             commands::request_admin_agent,

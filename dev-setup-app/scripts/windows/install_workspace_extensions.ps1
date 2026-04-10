@@ -325,81 +325,115 @@ try {
 # ── Install extensions to WSL remote environment ─────────────────────────────
 Write-Output ""
 Write-Output "→ Installing extensions to WSL remote environment (ERC)..."
-Write-Output "  (Using VS Code Server CLI inside WSL for reliable installation)"
+Write-Output "  (Using same pattern as check-extensions.sh - runs inside WSL with code CLI)"
 Flush-Output
 
 $wslSuccess = 0
 $wslFail = 0
 
-# Build bash script to install extensions using VS Code Server CLI inside WSL
-$bashScript = @"
-#!/bin/bash
-set -e
+# Calculate total count for use in bash script
+$wslExtCount = $wslExtensions.Count
 
-# Find VS Code Server CLI
-VSCODE_CLI=`$(echo `$HOME/.vscode-server/bin/*/bin/code-server 2>/dev/null | awk '{print `$1}')
+# Build a bash script using the same reliable pattern as check-extensions.sh
+# This runs entirely inside WSL and uses the same code CLI detection logic
+$installScript = @"
+#!/usr/bin/env bash
+set -uo pipefail
 
-if [ ! -f "`$VSCODE_CLI" ]; then
-    echo "[ERROR] VS Code Server CLI not found at ~/.vscode-server/bin/*/bin/code-server"
-    echo "[ERROR] Please open VS Code connected to WSL at least once to initialize the server"
+# ── Find the 'code' CLI (same logic as check-extensions.sh) ──────────────────
+CODE_BIN=""
+
+# First try simple command lookup
+if command -v code &>/dev/null; then
+    CODE_BIN="code"
+else
+    # Try known paths including VS Code server locations
+    for candidate in /usr/bin/code /usr/local/bin/code `$HOME/.vscode-server/bin/*/bin/remote-cli/code `$HOME/.vscode-server/cli/bin/code; do
+        for expanded in `$candidate; do
+            if [[ -x "`$expanded" ]]; then
+                CODE_BIN="`$expanded"
+                break 2
+            fi
+        done
+    done
+fi
+
+if [[ -z "`$CODE_BIN" ]]; then
+    echo "[ERROR] 'code' CLI not found in WSL environment"
     exit 1
 fi
 
-echo "[diag] Using VS Code Server CLI: `$VSCODE_CLI"
+echo "[diag] Using VS Code CLI: `$CODE_BIN"
 
-# Export SSL bypass environment variables
-export NODE_TLS_REJECT_UNAUTHORIZED=0
-export NPM_CONFIG_STRICT_SSL=false
+# Get currently installed extensions
+installed_output="`$(`$CODE_BIN --list-extensions --show-versions 2>/dev/null || true)"
 
 SUCCESS=0
 FAILED=0
 
 "@
 
-# Add each extension to the installation script
+# Add each extension to install
 foreach ($ext in $wslExtensions) {
-    $bashScript += @"
+    $installScript += @"
+
+# Install $ext
 echo "[WSL] $ext"
-if `$VSCODE_CLI --install-extension "$ext" --force 2>&1 | grep -v 'Downloading' | head -1; then
-    sleep 0.2
-    if `$VSCODE_CLI --list-extensions 2>/dev/null | grep -qi "^$ext`$"; then
-        echo "  [OK] Verified installed in WSL"
+installed_version=`$(echo "`$installed_output" | grep -i "^$ext@" | head -1 | cut -d'@' -f2)
+
+if [[ -z "`$installed_version" ]]; then
+    echo "  → Installing (not currently installed)..."
+    if "`$CODE_BIN" --install-extension "$ext" --force >/dev/null 2>&1; then
+        echo "  [OK] Installed successfully"
         ((SUCCESS++))
     else
-        echo "  [ERROR] Not found in WSL after installation"
+        echo "  [ERROR] Installation failed"
         ((FAILED++))
     fi
 else
-    echo "  [ERROR] Installation failed"
-    ((FAILED++))
+    # Try to update anyway (--force reinstalls if newer version available)
+    if "`$CODE_BIN" --install-extension "$ext" --force >/dev/null 2>&1; then
+        new_version=`$("`$CODE_BIN" --list-extensions --show-versions 2>/dev/null | grep -i "^$ext@" | head -1 | cut -d'@' -f2)
+        if [[ "`$new_version" == "`$installed_version" ]]; then
+            echo "  [OK] Already installed @ `$installed_version"
+        else
+            echo "  [OK] Updated `$installed_version → `$new_version"
+        fi
+        ((SUCCESS++))
+    else
+        echo "  [ERROR] Installation/update failed"
+        ((FAILED++))
+    fi
 fi
-echo ""
 
 "@
 }
 
-$bashScript += @"
-echo "═══════════════════════════════════════════════════════════"
-echo "  WSL Extensions: `$SUCCESS/${wslExtensions.Count} installed, `$FAILED failed"
-echo "═══════════════════════════════════════════════════════════"
+$installScript += @"
+
+echo ""
+echo "════════════════════════════════════════════════════════════"
+echo "  WSL Extensions: `$SUCCESS/$wslExtCount installed, `$FAILED failed"
+echo "════════════════════════════════════════════════════════════"
 
 exit `$FAILED
 "@
 
-# Execute the installation script inside WSL
+# Execute the bash script inside WSL (same as check-extensions.sh runs)
 try {
-    Write-Output "[diag] Executing installation script inside WSL..."
+    Write-Output "[diag] Executing extension installation script inside WSL..."
+    Write-Output ""
     Flush-Output
 
-    # Convert Windows line endings to Unix before piping to bash
-    $bashScriptUnix = $bashScript.Replace("`r`n", "`n")
-    $result = $bashScriptUnix | wsl -d ERC -- bash -s 2>&1
+    # Convert to Unix line endings and pipe to bash
+    $installScriptUnix = $installScript.Replace("`r`n", "`n")
+    $result = $installScriptUnix | wsl -d ERC -- bash -s 2>&1
 
     # Display output and count results
     $result | ForEach-Object {
         $line = $_.ToString()
         Write-Output $line
-        if ($line -match '\[OK\] Verified installed in WSL') {
+        if ($line -match '\[OK\]') {
             $wslSuccess++
         } elseif ($line -match '\[ERROR\]') {
             $wslFail++
@@ -407,13 +441,10 @@ try {
         Flush-Output
     }
 
-    if ($LASTEXITCODE -ne 0) {
-        Write-Output ""
-        Write-Output "[WARN] Some extensions failed to install (see errors above)"
-        Flush-Output
-    }
+    Write-Output ""
+    Flush-Output
 } catch {
-    Write-Output "[ERROR] Failed to execute WSL installation: $($_.Exception.Message)"
+    Write-Output "[ERROR] Failed to execute WSL installation script: $($_.Exception.Message)"
     Flush-Output
     $wslFail = $wslExtensions.Count
 }
@@ -434,21 +465,22 @@ if ($wslFail -gt 0) {
     Write-Output "[WARN] Some extensions failed to install to WSL."
     Write-Output ""
     Write-Output "  To manually install to WSL, run from inside WSL terminal:"
-    Write-Output "    VSCODE_CLI=`$(echo ~/.vscode-server/bin/*/bin/code-server | awk '{print `$1}')"
-    Write-Output "    `$VSCODE_CLI --install-extension <extension-id> --force"
+    Write-Output "    wsl -d ERC"
+    Write-Output "    code --install-extension <extension-id> --force"
     Write-Output ""
     Write-Output "  Or use VS Code Extensions panel:"
-    Write-Output "    1. Open VS Code connected to WSL (code --remote wsl+ERC)"
+    Write-Output "    1. Open VS Code connected to WSL: File → Connect to WSL"
     Write-Output "    2. Go to Extensions panel (Ctrl+Shift+X)"
-    Write-Output "    3. Click 'Install in WSL: ERC' for each missing extension"
+    Write-Output "    3. Click the blue 'Install in WSL: ERC' button for each missing extension"
 } else {
     Write-Output ""
     Write-Output "[OK] All WSL extensions installed successfully!"
     Write-Output ""
     Write-Output "  Development tools are now in WSL remote environment."
     Write-Output ""
-    Write-Output "  To verify installed extensions:"
-    Write-Output "    wsl -d ERC -- bash -c \"`$(echo ~/.vscode-server/bin/*/bin/code-server | awk '{print `$1}') --list-extensions\""
+    Write-Output "  To verify installed extensions from inside WSL:"
+    Write-Output "    wsl -d ERC"
+    Write-Output "    code --list-extensions"
 }
 
 # ═════════════════════════════════════════════════════════════════════════════

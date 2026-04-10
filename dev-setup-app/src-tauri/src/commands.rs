@@ -1691,6 +1691,16 @@ pub fn get_config(state: State<'_, Mutex<AppState>>) -> ConfigOutput {
     ConfigOutput::from(&state.lock().unwrap().config)
 }
 
+/// Resets configuration to factory defaults
+#[tauri::command]
+pub fn reset_config_to_defaults(
+    state: State<'_, Mutex<AppState>>,
+) -> Result<(), String> {
+    let mut s = state.lock().unwrap();
+    s.config = UserConfig::default();
+    Ok(())
+}
+
 /// Saves updated user configuration.
 #[tauri::command]
 pub fn save_config(
