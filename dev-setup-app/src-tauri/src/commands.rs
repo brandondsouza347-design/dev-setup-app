@@ -956,16 +956,28 @@ async fn check_vpn_connection_status(config: &UserConfig) -> PrereqCheck {
         Ok(o) => {
             let stdout = String::from_utf8_lossy(&o.stdout);
             let stderr = String::from_utf8_lossy(&o.stderr);
-            let message = stdout.lines().last()
-                .or_else(|| stderr.lines().last())
+
+            // Try to get the last meaningful line from output
+            let message = stdout.lines()
+                .filter(|line| !line.trim().is_empty())
+                .last()
+                .or_else(|| stderr.lines().filter(|line| !line.trim().is_empty()).last())
                 .unwrap_or("VPN is not connected")
                 .to_string();
-            log::warn!("check_vpn_connection_status: [WARN] {}", message);
+
+            log::warn!("check_vpn_connection_status: [WARN] exit_code={}, message={}", o.status.code().unwrap_or(-1), message);
+            log::debug!("check_vpn_connection_status: stdout={}", stdout);
+            log::debug!("check_vpn_connection_status: stderr={}", stderr);
+
             PrereqCheck {
                 name: "VPN Connection Status".to_string(),
                 passed: false,
                 warning: true,
-                message: format!("{}. Click 'Connect to VPN' to establish connection.", message),
+                message: if message.trim().is_empty() {
+                    "VPN connection status could not be determined".to_string()
+                } else {
+                    message
+                },
                 actionable: Some(true),
                 action_id: Some("connect_vpn".to_string()),
             }
@@ -976,9 +988,9 @@ async fn check_vpn_connection_status(config: &UserConfig) -> PrereqCheck {
                 name: "VPN Connection Status".to_string(),
                 passed: false,
                 warning: true,
-                message: format!("Could not check VPN status: {}", e),
-                actionable: None,
-                action_id: None,
+                message: "Could not check VPN status (check script unavailable)".to_string(),
+                actionable: Some(true),
+                action_id: Some("connect_vpn".to_string()),
             }
         }
     }
@@ -1019,18 +1031,33 @@ async fn check_vpn_connection_status(_config: &UserConfig) -> PrereqCheck {
         Ok(o) => {
             let stdout = String::from_utf8_lossy(&o.stdout);
             let stderr = String::from_utf8_lossy(&o.stderr);
+
+            // Try to find a meaningful message from the output
             let message = stdout.lines()
                 .filter(|line| line.starts_with("✓") || line.starts_with("✗"))
                 .last()
-                .or_else(|| stderr.lines().last())
+                .or_else(|| {
+                    // If no formatted output, try to get any error message
+                    stderr.lines()
+                        .filter(|line| !line.trim().is_empty())
+                        .next()
+                })
                 .unwrap_or("OpenVPN is not connected")
                 .to_string();
-            log::warn!("check_vpn_connection_status: [WARN] {}", message);
+
+            log::warn!("check_vpn_connection_status: [WARN] exit_code={}, message={}", o.status.code().unwrap_or(-1), message);
+            log::debug!("check_vpn_connection_status: stdout={}", stdout);
+            log::debug!("check_vpn_connection_status: stderr={}", stderr);
+
             PrereqCheck {
                 name: "VPN Connection Status".to_string(),
                 passed: false,
                 warning: true,
-                message: format!("{}. Click 'Connect to VPN' to establish connection.", message),
+                message: if message.trim().is_empty() {
+                    "OpenVPN connection status could not be determined".to_string()
+                } else {
+                    message
+                },
                 actionable: Some(true),
                 action_id: Some("connect_vpn".to_string()),
             }
@@ -1041,9 +1068,9 @@ async fn check_vpn_connection_status(_config: &UserConfig) -> PrereqCheck {
                 name: "VPN Connection Status".to_string(),
                 passed: false,
                 warning: true,
-                message: format!("Could not check VPN status: {}", e),
-                actionable: None,
-                action_id: None,
+                message: "Could not check VPN status (check script unavailable)".to_string(),
+                actionable: Some(true),
+                action_id: Some("connect_vpn".to_string()),
             }
         }
     }

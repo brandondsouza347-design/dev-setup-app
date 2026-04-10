@@ -16,7 +16,7 @@ if [ "$VPN_METHOD" = "tunnelblick" ]; then
     # Query connection state
     STATE=$(osascript -e 'tell application "Tunnelblick"
         try
-            set configCount to count of configurations
+            set configCount to count configurations
             if configCount is 0 then
                 return "NO_CONFIGS"
             end if
