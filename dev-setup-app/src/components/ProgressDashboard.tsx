@@ -109,7 +109,7 @@ export const ProgressDashboard: React.FC<Props> = ({
       'Please save all your work before proceeding.\n\n' +
       'After restart, re-launch this application to continue setup.'
     );
-    
+
     if (confirmed) {
       try {
         await invoke('restart_system');
@@ -118,6 +118,16 @@ export const ProgressDashboard: React.FC<Props> = ({
         alert('Failed to restart system. Please restart manually.');
       }
     }
+  };
+
+  // Helper to detect if a step was already installed
+  const wasAlreadyInstalled = (stepId: string): boolean => {
+    const stepLogs = logs[stepId] ?? [];
+    return stepLogs.some(log =>
+      log.line.includes('already installed') ||
+      log.line.includes('Already installed') ||
+      log.line.includes('already exists')
+    );
   };
 
   const doneCount = Object.values(stepResults).filter((r) => r.status === 'done').length;
@@ -230,7 +240,7 @@ export const ProgressDashboard: React.FC<Props> = ({
                     <span className={`text-sm font-medium ${isCurrent ? 'text-blue-700 dark:text-blue-300' : 'text-gray-900 dark:text-white'}`}>
                       {idx + 1}. {step.title}
                     </span>
-                    <StepBadge status={status} />
+                    <StepBadge status={status} wasAlreadyInstalled={wasAlreadyInstalled(step.id)} />
                     {result?.duration_secs != null && (
                       <span className="flex items-center gap-0.5 text-xs text-gray-400">
                         <Clock className="w-3 h-3" />

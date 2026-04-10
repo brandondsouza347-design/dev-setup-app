@@ -89,6 +89,16 @@ export const CustomWorkflowProgress: React.FC<Props> = ({
     }
   };
 
+  // Helper to detect if a step was already installed
+  const wasAlreadyInstalled = (stepId: string): boolean => {
+    const stepLogs = logs[stepId] ?? [];
+    return stepLogs.some(log =>
+      log.line.includes('already installed') ||
+      log.line.includes('Already installed') ||
+      log.line.includes('already exists')
+    );
+  };
+
   if (!workflow) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -246,6 +256,7 @@ export const CustomWorkflowProgress: React.FC<Props> = ({
                 onToggle={() => setExpandedStep(isExpanded ? null : step.id)}
                 onRetry={status === 'failed' ? () => handleRetry(step.id) : undefined}
                 bottomRef={isExpanded ? bottomRef : undefined}
+                wasAlreadyInstalled={wasAlreadyInstalled(step.id)}
               />
             );
           })}
@@ -320,6 +331,7 @@ interface StepCardProps {
   onToggle: () => void;
   onRetry?: () => void;
   bottomRef?: React.RefObject<HTMLDivElement>;
+  wasAlreadyInstalled?: boolean;
 }
 
 const StepCard: React.FC<StepCardProps> = ({
@@ -332,6 +344,7 @@ const StepCard: React.FC<StepCardProps> = ({
   onToggle,
   onRetry,
   bottomRef,
+  wasAlreadyInstalled = false,
 }) => {
   const StatusIcon = () => {
     if (isRetrying) return <Loader2 className="w-5 h-5 text-blue-400 animate-spin shrink-0" />;
@@ -367,7 +380,7 @@ const StepCard: React.FC<StepCardProps> = ({
           <div className="text-sm text-gray-600 dark:text-gray-400 truncate">{step.description}</div>
         </div>
         <div className="flex items-center gap-2">
-          {status !== 'pending' && <StepBadge status={status as StepStatus} />}
+          {status !== 'pending' && <StepBadge status={status as StepStatus} wasAlreadyInstalled={wasAlreadyInstalled} />}
           {isExpanded ? (
             <ChevronDown className="w-4 h-4 text-gray-400" />
           ) : (

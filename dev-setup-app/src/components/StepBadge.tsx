@@ -4,6 +4,7 @@ import type { StepStatus } from '../types';
 interface Props {
   status: StepStatus;
   small?: boolean;
+  wasAlreadyInstalled?: boolean;
 }
 
 const config: Record<StepStatus, { label: string; classes: string }> = {
@@ -14,11 +15,14 @@ const config: Record<StepStatus, { label: string; classes: string }> = {
   skipped:  { label: 'Skipped',  classes: 'bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300' },
 };
 
-export const StepBadge: React.FC<Props> = ({ status, small = true }) => {
+export const StepBadge: React.FC<Props> = ({ status, small = true, wasAlreadyInstalled = false }) => {
   const { label, classes } = config[status];
+  // Override label if already installed
+  const displayLabel = (status === 'done' && wasAlreadyInstalled) ? 'Already installed ✓' : label;
+
   return (
     <span className={`inline-block rounded-full font-medium ${small ? 'text-xs px-2 py-0.5' : 'text-sm px-3 py-1'} ${classes}`}>
-      {label}
+      {displayLabel}
     </span>
   );
 };
