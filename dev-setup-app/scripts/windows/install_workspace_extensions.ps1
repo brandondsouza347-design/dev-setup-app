@@ -571,7 +571,7 @@ Write-Output "MCP config written to `$targetPath"
 "@
 $mergePsScriptPath = Join-Path $ipcDir 'merge_mcp_windows.ps1'
 [System.IO.File]::WriteAllText($mergePsScriptPath, $mergePsScript, $utf8NoBom)
-& powershell.exe -ExecutionPolicy Bypass -File $mergePsScriptPath
+& powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File $mergePsScriptPath
 Write-Output "  [OK] Windows MCP config written to: $windowsMcpPath"
 
 # Update WSL settings.json to include MCP gallery enabled setting

@@ -34,7 +34,7 @@ function Test-VpnStatus {
 
         foreach ($checkScript in $scriptLocations) {
             if (Test-Path $checkScript -ErrorAction SilentlyContinue) {
-                $result = & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $checkScript 2>&1
+                $result = & powershell -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File $checkScript 2>&1
                 return $LASTEXITCODE -eq 0
             }
         }
@@ -120,11 +120,11 @@ $isInConfigDir = $ovpnFile.StartsWith($cfgDir, [System.StringComparison]::Ordina
 if ($isInConfigDir) {
     # Use profile name only (OpenVPN GUI looks in config directory)
     Write-Output "  Starting OpenVPN GUI with profile name: $profileName"
-    Start-Process -FilePath $exePath -ArgumentList "--connect", $profileName -ErrorAction SilentlyContinue
+    Start-Process -FilePath $exePath -ArgumentList "--connect", $profileName -WindowStyle Hidden -ErrorAction SilentlyContinue
 } else {
     # Use full path for configs outside standard directory
     Write-Output "  Starting OpenVPN GUI with config path: $ovpnFile"
-    Start-Process -FilePath $exePath -ArgumentList "--connect", "`"$ovpnFile`"" -ErrorAction SilentlyContinue
+    Start-Process -FilePath $exePath -ArgumentList "--connect", "`"$ovpnFile`"" -WindowStyle Hidden -ErrorAction SilentlyContinue
 }
 
 Write-Output "  OpenVPN process started — waiting for tunnel to establish..."

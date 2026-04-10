@@ -998,24 +998,23 @@ async fn check_vpn_connection_status(config: &UserConfig) -> PrereqCheck {
 
 #[cfg(target_os = "windows")]
 async fn check_vpn_connection_status(_config: &UserConfig) -> PrereqCheck {
-    use std::process::Command;
     log::info!("check_vpn_connection_status: checking actual VPN connection on Windows");
 
-    let mut cmd = Command::new("powershell");
+    let mut cmd = std::process::Command::new("powershell");
     cmd.arg("-NoProfile")
         .arg("-NonInteractive")
         .arg("-ExecutionPolicy")
         .arg("Bypass")
         .arg("-File")
         .arg("scripts/windows/check_vpn_status.ps1");
-    
-    // Hide the PowerShell window
+
+    // Hide the PowerShell window - MUST be set before .output()
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW - suppress console window
     }
-    
+
     let output = cmd.output();
 
     match output {
@@ -1939,9 +1938,25 @@ pub fn open_terminal() -> Result<(), String> {
         }
         "windows" => {
             // Spawn directly so each failure is catchable (not via cmd /c start which swallows it)
-            let launched = std::process::Command::new("wt").spawn().is_ok()
-                || std::process::Command::new("powershell").spawn().is_ok()
-                || std::process::Command::new("cmd").spawn().is_ok();
+            // Use CREATE_NO_WINDOW to prevent console flash during spawn (terminal will still open visibly)
+            #[cfg(target_os = "windows")]
+            use std::os::windows::process::CommandExt;
+
+            let mut wt_cmd = std::process::Command::new("wt");
+            #[cfg(target_os = "windows")]
+            wt_cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+
+            let mut ps_cmd = std::process::Command::new("powershell");
+            #[cfg(target_os = "windows")]
+            ps_cmd.creation_flags(0x08000000);
+
+            let mut cmd_cmd = std::process::Command::new("cmd");
+            #[cfg(target_os = "windows")]
+            cmd_cmd.creation_flags(0x08000000);
+
+            let launched = wt_cmd.spawn().is_ok()
+                || ps_cmd.spawn().is_ok()
+                || cmd_cmd.spawn().is_ok();
             if !launched {
                 log::error!("open_terminal: could not open any terminal (wt / powershell / cmd all failed)");
                 return Err("Could not open a terminal".to_string());
