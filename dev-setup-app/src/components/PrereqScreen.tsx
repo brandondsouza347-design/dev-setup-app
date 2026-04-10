@@ -156,13 +156,13 @@ export const PrereqScreen: React.FC<Props> = ({
 
   // Group VPN-related checks together (handle both Windows and macOS)
   const openvpnCheck = checks.find(c =>
-    c.name === 'OpenVPN (VPN Client)' || c.name === 'Tunnelblick (VPN Client)'
+    c.name === 'OpenVPN (VPN Client)' || c.name.startsWith('VPN Client (')
   );
   const vpnConnectionCheck = checks.find(c => c.name === 'VPN Connection Status');
   const vpnConnCheck = checks.find(c => c.name === 'GitLab VPN Connectivity');
   const otherChecks = checks.filter(c =>
     c.name !== 'OpenVPN (VPN Client)' &&
-    c.name !== 'Tunnelblick (VPN Client)' &&
+    !c.name.startsWith('VPN Client (') &&
     c.name !== 'VPN Connection Status' &&
     c.name !== 'GitLab VPN Connectivity'
   );

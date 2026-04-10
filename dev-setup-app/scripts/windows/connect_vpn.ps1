@@ -15,10 +15,32 @@ function Test-GitLabReachable {
 }
 
 function Test-VpnStatus {
-    $checkScript = Join-Path $PSScriptRoot "check_vpn_status.ps1"
-    if (Test-Path $checkScript) {
-        $result = & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $checkScript 2>&1
-        return $LASTEXITCODE -eq 0
+    try {
+        # Try multiple ways to locate the check script
+        $scriptLocations = @()
+
+        # Method 1: Use PSScriptRoot if available
+        if ($PSScriptRoot) {
+            $scriptLocations += (Join-Path $PSScriptRoot "check_vpn_status.ps1")
+        }
+
+        # Method 2: Try relative to current working directory
+        $scriptLocations += "scripts\windows\check_vpn_status.ps1"
+        $scriptLocations += ".\scripts\windows\check_vpn_status.ps1"
+
+        # Method 3: Try in current directory
+        $scriptLocations += "check_vpn_status.ps1"
+        $scriptLocations += ".\check_vpn_status.ps1"
+
+        foreach ($checkScript in $scriptLocations) {
+            if (Test-Path $checkScript -ErrorAction SilentlyContinue) {
+                $result = & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $checkScript 2>&1
+                return $LASTEXITCODE -eq 0
+            }
+        }
+    } catch {
+        # If VPN status check fails, return false (not connected)
+        return $false
     }
     return $false
 }
@@ -36,7 +58,13 @@ if (Test-VpnStatus) {
     }
 }
 
-Write-Output "  OpenVPN is not connected. Launching VPN..."
+Write-Output "  Checking GitLab connectivity to determine if VPN needed..."
+if (Test-GitLabReachable) {
+    Write-Output "✓ GitLab is already reachable. VPN may already be connected via another method."
+    exit 0
+}
+
+Write-Output "  GitLab not reachable. Launching VPN..."
 
 # Step 2: Locate OpenVPN executable
 Write-Output "→ Step 2/3: Launching OpenVPN..."
@@ -106,9 +134,17 @@ $maxAttempts = 36
 Write-Output "→ Step 3/3: Waiting for VPN connection (polling every 5s, timeout: 3 minutes)..."
 for ($i = 1; $i -le $maxAttempts; $i++) {
     Start-Sleep -Seconds 5
-    if ((Test-VpnStatus) -and (Test-GitLabReachable)) {
-        Write-Output "✓ VPN connected successfully (OpenVPN GUI connected and GitLab reachable)"
-        Write-Output "  Took $($i * 5) seconds to establish connection."
+
+    # Primary check: GitLab reachability (always works)
+    if (Test-GitLabReachable) {
+        # Optional: Verify VPN status if check is available
+        $vpnStatus = Test-VpnStatus
+        if ($vpnStatus) {
+            Write-Output "✓ VPN connected successfully (OpenVPN GUI connected and GitLab reachable)"
+        } else {
+            Write-Output "✓ GitLab is now reachable after $($i * 5) seconds."
+        }
+        Write-Output "  Connection established in $($i * 5) seconds."
         exit 0
     }
     if ($i % 6 -eq 0) {
